@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import './AdminOrders.css';
+import BASE_URL from './api';
 
 export default function AdminOrders() {
   const [orders, setOrders] = useState([]);
@@ -8,7 +9,7 @@ export default function AdminOrders() {
 
   useEffect(() => {
     setLoading(true);
-    fetch('/orders')
+    fetch(`${BASE_URL}/orders`)
       .then((res) => {
         if (!res.ok) throw new Error('Failed to load orders');
         return res.json();

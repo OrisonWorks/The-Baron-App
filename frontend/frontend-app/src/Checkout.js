@@ -2,6 +2,7 @@ import React, { useContext, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CartContext } from './CartContext';
 import './Checkout.css';
+import BASE_URL from './api';
 
 function Checkout() {
   const { cartItems, clearCart } = useContext(CartContext);
@@ -18,7 +19,7 @@ function Checkout() {
       let orderId = null;
       try {
         const orderPayload = { items: cartItems, total };
-        const res = await fetch('/orders', {
+        const res = await fetch(`${BASE_URL}/orders`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(orderPayload),

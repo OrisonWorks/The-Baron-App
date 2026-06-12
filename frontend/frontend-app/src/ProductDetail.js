@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { CartContext } from './CartContext';
 import { useToast } from './ToastContext';
 import './ProductDetail.css';
+import BASE_URL from './api';
 
 function ProductDetail() {
   const { id } = useParams();
@@ -12,7 +13,7 @@ function ProductDetail() {
   const { showToast } = useToast();
 
   useEffect(() => {
-    fetch(`/products/${id}`)
+    fetch(`${BASE_URL}/products/${id}`)
       .then(res => res.json())
       .then(data => setProduct(data))
       .catch(err => console.error(err));

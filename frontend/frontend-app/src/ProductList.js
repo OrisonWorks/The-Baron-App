@@ -3,6 +3,7 @@ import './ProductList.css';
 import { Link } from 'react-router-dom';
 import { CartContext } from './CartContext';
 import { useToast } from './ToastContext';
+import BASE_URL from './api';
 
 function ProductList() {
   const [products, setProducts] = useState([]);
@@ -11,7 +12,7 @@ function ProductList() {
   const { showToast } = useToast();
 
   useEffect(() => {
-    fetch('/products')
+    fetch(`${BASE_URL}/products`)
       .then((res) => res.json())
       .then(setProducts)
       .catch((err) => console.error('Failed to fetch products:', err));

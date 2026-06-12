@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import './ThankYou.css';
+import BASE_URL from './api';
 
 export default function ThankYou() {
   const location = useLocation();
@@ -14,7 +15,7 @@ export default function ThankYou() {
   useEffect(() => {
     if (!orderId) return;
     setLoading(true);
-    fetch(`/orders/${orderId}`)
+    fetch(`${BASE_URL}/orders/${orderId}`)
       .then((res) => {
         if (!res.ok) throw new Error(`Failed to load order #${orderId}`);
         return res.json();
