@@ -1,0 +1,10 @@
+.admin-orders .container {
+  max-width: 1000px;
+  margin: 20px auto;
+  padding: 0 16px;
+}
+.admin-orders h1 { margin: 12px 0 16px; }
+.table-wrap { overflow-x: auto; }
+.table-wrap table { width: 100%; border-collapse: collapse; }
+.table-wrap th, .table-wrap td { padding: 10px; border-bottom: 1px solid #eee; text-align: left; }
+.error { color: #b12704; }

@@ -1,0 +1,62 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend-app/package-lock.json
+      - name: Install dependencies
+        run: cd backend-app && npm ci
+      - name: Run tests
+        run: cd backend-app && npm test
+      - name: Build
+        run: cd backend-app && npm run build
+
+  frontend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/frontend-app/package-lock.json
+      - name: Install dependencies
+        run: cd frontend/frontend-app && npm ci
+      - name: Run tests
+        run: cd frontend/frontend-app && npm test -- --watchAll=false
+      - name: Build
+        run: cd frontend/frontend-app && npm run build
+
+  docker-build:
+    needs: [backend-tests, frontend-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: actions/setup-buildx-action@v3
+      - name: Build Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend-app
+          push: false
+          tags: thebaronzm-backend:latest
+      - name: Build Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend/frontend-app
+          push: false
+          tags: thebaronzm-frontend:latest

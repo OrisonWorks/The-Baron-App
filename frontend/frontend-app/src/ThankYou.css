@@ -1,0 +1,87 @@
+.thankyou {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8f9fb;
+  padding: 40px 16px;
+}
+
+.thankyou-card {
+  background: #fff;
+  border: 1px solid #e6e8ec;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+  max-width: 560px;
+  width: 100%;
+  padding: 32px;
+  text-align: center;
+}
+
+.thankyou-card h1 {
+  font-size: 28px;
+  margin: 0 0 12px;
+  letter-spacing: 0.5px;
+}
+
+.thankyou-card p {
+  color: #555;
+  margin: 8px 0;
+}
+
+.thankyou-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.btn {
+  display: inline-block;
+  padding: 10px 16px;
+  border-radius: 4px;
+  background: #111;
+  color: #fff;
+  text-decoration: none;
+  transition: background 0.2s ease;
+}
+
+.btn:hover {
+  background: #333;
+}
+
+.btn-secondary {
+  background: #f3f4f6;
+  color: #111;
+}
+
+.thankyou-actions .btn-secondary:hover {
+  background-color: #e2e6ea;
+}
+
+/* Order summary */
+.order-summary {
+  margin-top: 20px;
+  text-align: left;
+}
+.order-summary h3 {
+  margin-bottom: 10px;
+}
+.order-summary ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px 0;
+}
+.order-summary li {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid #f1f1f1;
+}
+.order-summary .total {
+  font-weight: 700;
+  margin-top: 8px;
+}
+.error {
+  color: #b12704;
+}

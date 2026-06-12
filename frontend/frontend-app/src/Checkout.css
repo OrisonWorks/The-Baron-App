@@ -1,0 +1,29 @@
+.checkout {
+  max-width: 600px;
+  margin: 100px auto;
+  padding: 20px;
+  text-align: center;
+  font-family: 'Montserrat', sans-serif;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.checkout h2 {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+
+.checkout p {
+  font-size: 1rem;
+}
+
+.checkout a {
+  color: #25D366;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.checkout a:hover {
+  text-decoration: underline;
+}

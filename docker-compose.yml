@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend-app
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    volumes:
+      - backend-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+      - DB_NAME=data/thebaronzm.sqlite
+
+  frontend:
+    build:
+      context: ./frontend/frontend-app
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  backend-data:
