@@ -22,9 +22,13 @@ function ProductList() {
     fetch(`${BASE_URL}/products`)
       .then((res) => res.json())
       .then((data) => {
-        setProducts(data);
-        setFilteredProducts(data);
-        const cats = ['All', ...new Set(data.map((p) => p.category))];
+        const productsWithImages = data.map(p => ({
+          ...p,
+          imageUrl: p.imageUrl.startsWith('http') ? p.imageUrl : `${process.env.PUBLIC_URL}${p.imageUrl}`
+        }));
+        setProducts(productsWithImages);
+        setFilteredProducts(productsWithImages);
+        const cats = ['All', ...new Set(productsWithImages.map((p) => p.category))];
         setCategories(cats);
       })
       .catch((err) => console.error('Failed to fetch products:', err));

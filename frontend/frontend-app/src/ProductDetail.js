@@ -23,7 +23,13 @@ function ProductDetail() {
   useEffect(() => {
     fetch(`${BASE_URL}/products/${id}`)
       .then(res => res.json())
-      .then(data => setProduct(data))
+      .then(data => {
+        const productWithImage = {
+          ...data,
+          imageUrl: data.imageUrl.startsWith('http') ? data.imageUrl : `${process.env.PUBLIC_URL}${data.imageUrl}`
+        };
+        setProduct(productWithImage);
+      })
       .catch(err => console.error(err));
   }, [id]);
 
