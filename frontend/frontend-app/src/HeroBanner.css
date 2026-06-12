@@ -1,20 +1,27 @@
 .hero-banner {
   width: 100%;
-  min-height: 600px;
-  background: linear-gradient(135deg, #0d0d0d 0%, #2a2a2a 50%, #1a1a1a 100%);
+  min-height: 620px;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
   overflow: hidden;
+  transition: background-image 0.6s ease;
 }
 
-.hero-banner::before {
-  content: '';
+.hero-overlay {
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 70% 50%, rgba(197, 164, 126, 0.12) 0%, transparent 60%);
-  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.55) 0%,
+    rgba(0, 0, 0, 0.35) 50%,
+    rgba(0, 0, 0, 0.65) 100%
+  );
+  z-index: 0;
 }
 
 .hero-content {
@@ -24,6 +31,12 @@
   position: relative;
   z-index: 1;
   max-width: 720px;
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.hero-content.fading {
+  opacity: 0;
+  transform: translateY(12px);
 }
 
 .hero-eyebrow {
@@ -48,14 +61,14 @@
 .hero-sub {
   font-size: 0.85rem;
   letter-spacing: 0.1em;
-  color: rgba(255, 255, 255, 0.65);
+  color: rgba(255, 255, 255, 0.75);
   margin-bottom: 48px;
   font-weight: 300;
 }
 
 .hero-cta {
   display: inline-block;
-  border: 1px solid rgba(255,255,255,0.7);
+  border: 1px solid rgba(255, 255, 255, 0.85);
   color: var(--white);
   padding: 15px 48px;
   font-size: 0.68rem;
@@ -69,6 +82,32 @@
 .hero-cta:hover {
   background: var(--white);
   color: var(--black);
+  border-color: var(--white);
+}
+
+.hero-dots {
+  position: absolute;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  z-index: 2;
+}
+
+.hero-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+.hero-dot.active {
+  background: var(--white);
   border-color: var(--white);
 }
 

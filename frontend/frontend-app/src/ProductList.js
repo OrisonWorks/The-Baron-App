@@ -13,13 +13,39 @@ const WhatsAppIcon = () => (
 
 function ProductList() {
   const [products, setProducts] = useState([]);
+  const [filteredProducts, setFilteredProducts] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [categories, setCategories] = useState(['All']);
 
   useEffect(() => {
     fetch(`${BASE_URL}/products`)
       .then((res) => res.json())
-      .then(setProducts)
+      .then((data) => {
+        setProducts(data);
+        setFilteredProducts(data);
+        const cats = ['All', ...new Set(data.map((p) => p.category))];
+        setCategories(cats);
+      })
       .catch((err) => console.error('Failed to fetch products:', err));
   }, []);
+
+  useEffect(() => {
+    let result = products;
+
+    if (selectedCategory !== 'All') {
+      result = result.filter((p) => p.category === selectedCategory);
+    }
+
+    if (searchTerm) {
+      result = result.filter((p) =>
+        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.description.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    setFilteredProducts(result);
+  }, [searchTerm, selectedCategory, products]);
 
   const handleBuyWhatsApp = (p) => {
     const message = `Hello, I'm interested in:\n\n*${p.name}*\nPrice: ZMW ${p.price}\n\nIs this available?`;
@@ -28,28 +54,62 @@ function ProductList() {
 
   return (
     <section className="products-section">
-      <div className="products-header">
-        <h2>Our Collection</h2>
-      </div>
-      <div className="product-grid">
-        {products.map((p) => (
-          <div key={p.id} className="product-card">
-            <Link to={`/product/${p.id}`} className="product-image-link">
-              <div className="product-image-wrap">
-                <img src={p.imageUrl} alt={p.name} />
-                <div className="product-overlay"><span>Quick View</span></div>
-              </div>
-            </Link>
-            <div className="product-info">
-              <h3><Link to={`/product/${p.id}`}>{p.name}</Link></h3>
-              <p className="product-price">ZMW {p.price}</p>
-              <button className="btn-whatsapp" onClick={() => handleBuyWhatsApp(p)}>
-                <WhatsAppIcon />
-                Buy via WhatsApp
-              </button>
+      <div className="products-container">
+        <div className="products-header">
+          <h2>Our Collection</h2>
+          <div className="filter-controls">
+            <div className="search-box">
+              <input
+                type="text"
+                placeholder="Search products..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <div className="category-filters">
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  className={`filter-btn ${selectedCategory === cat ? 'active' : ''}`}
+                  onClick={() => setSelectedCategory(cat)}
+                >
+                  {cat}
+                </button>
+              ))}
             </div>
           </div>
-        ))}
+        </div>
+
+        {filteredProducts.length === 0 ? (
+          <div className="no-products">
+            <p>No products found matching your criteria.</p>
+            <button className="btn-secondary" onClick={() => {setSearchTerm(''); setSelectedCategory('All');}}>
+              Clear Filters
+            </button>
+          </div>
+        ) : (
+          <div className="product-grid">
+            {filteredProducts.map((p) => (
+              <div key={p.id} className="product-card">
+                <Link to={`/product/${p.id}`} className="product-image-link">
+                  <div className="product-image-wrap">
+                    <img src={p.imageUrl} alt={p.name} />
+                    <div className="product-overlay"><span>Quick View</span></div>
+                  </div>
+                </Link>
+                <div className="product-info">
+                  <div className="product-category">{p.category}</div>
+                  <h3><Link to={`/product/${p.id}`}>{p.name}</Link></h3>
+                  <p className="product-price">ZMW {p.price}</p>
+                  <button className="btn-whatsapp" onClick={() => handleBuyWhatsApp(p)}>
+                    <WhatsAppIcon />
+                    Buy via WhatsApp
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

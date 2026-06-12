@@ -14,6 +14,6 @@ test('renders the landing page', () => {
       </CartProvider>
     </MemoryRouter>
   );
-  const headingElement = screen.getByText(/Discover The Baron's Essentials/i);
+  const headingElement = screen.getByText(/Our Collection/i);
   expect(headingElement).toBeInTheDocument();
 });

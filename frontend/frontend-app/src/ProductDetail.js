@@ -50,7 +50,7 @@ function ProductDetail() {
         <img src={product.imageUrl} alt={product.name} />
       </div>
       <div className="pd-info-col">
-        <p className="pd-brand">The Baron ZM</p>
+        <p className="pd-brand">The Baron ZM • {product.category}</p>
         <h1 className="pd-name">{product.name}</h1>
         <p className="pd-price">ZMW {product.price}</p>
         <p className="pd-description">{product.description}</p>
