@@ -46,22 +46,6 @@ const PRODUCTS = [
     imageUrl: '/93627.jpg'
   },
   {
-    id: 6,
-    name: 'Automatic Open Heart',
-    description: 'Open-heart movement display with silver dial and mesh bracelet.',
-    price: 2400,
-    category: 'Watches',
-    imageUrl: '/94089.png'
-  },
-  {
-    id: 7,
-    name: 'Vintage-Inspired',
-    description: 'Retro design with domed crystal and leather strap.',
-    price: 1650,
-    category: 'Watches',
-    imageUrl: '/94092.jpg'
-  },
-  {
     id: 8,
     name: 'Two-Tone Classic',
     description: 'Stainless steel and gold-tone bracelet with champagne dial.',
