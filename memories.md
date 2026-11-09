@@ -1,0 +1,25 @@
+# The Baron — project memory
+
+Log of everything implemented/updated, newest first. Keep this updated in every PR that ships behaviour.
+
+## Context
+
+- Client: **Aaron Chilufya — The Baron** (Lusaka). WhatsApp +260 974 128 784, catalogue https://wa.me/c/260974128784.
+- Lines: watches (premium: Fossil, Invicta, Timex · affordable: Naviforce, Curren, Casio), phones, headphones, earphones, phone accessories (chargers, cables, covers), body care for men & women (lotions, serums, body wash, face masks), clothing. Goal: grow into a full e-commerce shop.
+- Built to mirror Petal Steps (OrisonWorks/PetalStepsTM): WhatsApp is the only order path, no exact stock counts or SKUs client-side, no blinking/flashing UI (reduced-motion honoured).
+- Brand: gold-crest "The Baron" logo (`public/brand/logo.jpg`, crest crop `crest.png`) — black, gold, crest navy/orange. Tagline "Premium Watches, Gadgets, and Accessories".
+
+## 2026-11-09 — Next.js rebuild (storefront phase 1)
+
+- Old CRA frontend + NestJS/SQLite backend moved to `legacy/` (unchanged). GitHub Pages deploy + old CI workflows removed; new CI runs `tsc` + `next build`.
+- New Next.js 15 / Tailwind v4 storefront, dark + gold theme, mobile first: hero, category grid (with "landing soon" for empty categories + WhatsApp catalogue link), shop with category tabs, Brand / Range / For chips, sort, header search, deep links (`?cat=&brand=&sort=&q=`).
+- Product model = product with variants (colour/storage/ml/size), per-variant price, quick view variant picker, condition + warranty.
+- Inventory from the published Google Sheet (`PRODUCTS_SHEET_CSV_URL`, stock-sheet template in `docs/`), fallback = the 16 watches + photos from the original site (photos resized to ≤1200px).
+- WhatsApp bag: name, number, area, delivery choice → formatted order message to +260 974 128 784. Floating WhatsApp button, mobile sticky bag bar, back-to-top.
+
+## Pending / next
+
+- Vercel project + `PRODUCTS_SHEET_CSV_URL` (needs Tumelo — no Vercel team access from Devin yet). Custom domain recommended (MTN Zambia can't reach `*.vercel.app`).
+- Aaron's stock sheet + photos.
+- Phase 2: `/admin` (stock −/+, add product, bulk CSV) via an Apps Script writer like Petal Steps; then receipts, reports, mailing list, interest log.
+- Confirm delivery/payment policy text with Aaron ("Free delivery above K500" carried over from the old site).

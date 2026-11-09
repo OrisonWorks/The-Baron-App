@@ -1,125 +1,48 @@
-# The Baron ZM (The-Baron-App)
+# The Baron — storefront
 
-**The Baron ZM** is a full-stack e-commerce application designed with a decoupled architecture, consisting of a dedicated NestJS backend and a React frontend.
+Storefront for **The Baron** (Lusaka): premium watches, gadgets and accessories — watches, phones, headphones, earphones, phone accessories, body care and clothing. Customers build a bag and send the order to WhatsApp **+260 974 128 784**; there is no online payment.
 
----
+Same stack as Petal Steps: **Next.js 15 (App Router) · TypeScript · Tailwind CSS v4 · Radix UI · Google Sheets CSV as the inventory source · Vercel**.
 
-## 🛠️ Technology Stack
+The previous React + NestJS app (GitHub Pages) lives untouched in [`legacy/`](legacy/README.md).
 
-### Backend (`backend-app`)
-- **Framework**: [NestJS](https://nestjs.com/) (Node.js framework)
-- **Language**: TypeScript
-- **Database**: **SQLite** (located at `backend-app/data/thebaronzm.sqlite`)
-- **ORM**: **TypeORM** for database interactions
-- **Key Features**:
-  - `ProductsModule`: Catalog management and retrieval.
-  - `OrdersModule`: Order processing and transaction management.
-  - Global Validation Pipes and CORS enabled.
-
-### Frontend (`frontend/frontend-app`)
-- **Framework**: **React**
-- **Language**: JavaScript
-- **State Management**: **React Context** (`CartContext`, `ToastContext`)
-- **Routing**: `react-router-dom`
-- **Key Components**:
-  - `ProductList` & `ProductDetail`: Product discovery.
-  - `Cart` & `Checkout`: Purchase flow.
-  - `AdminOrders`: Admin dashboard for order fulfillment.
-
----
-
-## 📂 Project Structure
-
-```text
-TheBaronZM/
-├── backend-app/          # NestJS application (Backend)
-│   ├── src/              # Source code
-│   ├── data/             # SQLite database storage
-│   └── test/             # Backend tests
-├── frontend/
-│   └── frontend-app/     # React application (Frontend)
-│       ├── src/          # Source code
-│       └── public/       # Static assets
-└── backend/              # Placeholder directory
-```
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-- Node.js (v18+ recommended)
-- npm or yarn
-- Docker & Docker Compose (optional, for containerized execution)
-
-### 🐳 Running with Docker (Recommended)
-
-The easiest way to run the entire system is using Docker Compose:
+## Run locally
 
 ```bash
-docker-compose up --build
+npm install
+cp .env.example .env.local   # optional: set PRODUCTS_SHEET_CSV_URL
+npm run dev                  # http://localhost:3000
+npx tsc --noEmit             # type check
+npm run build
 ```
 
-- **Frontend**: http://localhost:3000
-- **Backend**: http://localhost:4000
-- **Database**: SQLite data is persisted in a Docker volume `backend-data`.
+Without `PRODUCTS_SHEET_CSV_URL` the shop shows the built-in catalogue in `src/lib/products.ts` (the 16 watches from the original site). Empty categories show a "landing soon — ask on WhatsApp" card instead of placeholder products.
 
-### 💻 Local Development
+## Inventory: Google Sheet
 
-#### 1. Clone the repository
-#### 2. Install Backend dependencies
-   ```bash
-   cd backend-app
-   npm install
-   ```
-#### 3. Install Frontend dependencies
-   ```bash
-   cd frontend/frontend-app
-   npm install
-   ```
+1. Start from [`docs/The-Baron-stock-sheet-template.xlsx`](docs/The-Baron-stock-sheet-template.xlsx) (regenerate with `python3 scripts/make_stock_template.py`). Upload to Google Drive and open with Google Sheets.
+2. Fill the **STOCK** tab — **one row per variant** (colour / storage / ml / size). Rows sharing a `SKU` form one product.
 
-### Running the Application Locally
+   | Column | Notes |
+   | --- | --- |
+   | `SKU` | Internal code, never shown publicly |
+   | `NAME`, `BRAND`, `DESCRIPTION` | Shown on the card / quick view |
+   | `CATEGORY` | Phones, Headphones, Earphones, Phone Accessories, Watches, Body Care, Clothing |
+   | `TYPE` | Sub-group (e.g. Premium / Affordable for watches, Charger, Lotion) — becomes the "Range" filter |
+   | `FOR` | Men / Women / Unisex — the "For" filter |
+   | `VARIANT` | Option label, e.g. `128GB / Black`, `400ml`, `M / Black` |
+   | `PRICE (K)`, `STOCK` | Whole numbers. Per-variant price is supported |
+   | `CONDITION`, `WARRANTY` | Optional, shown in quick view (non-"New" condition gets a badge) |
+   | `PHOTO` | Image URL, Google Drive share link (auto-converted), or a filename in `public/products/` |
+   | `ACTIVE` | Optional; `no`/`false`/`hide` hides the product |
 
-For the best experience, run both the backend and frontend simultaneously.
+   Rows whose description starts with `EXAMPLE ROW` are ignored, as are unknown categories and sold-out products.
+3. **File → Share → Publish to web → STOCK → CSV**, and set the URL as `PRODUCTS_SHEET_CSV_URL` in `.env.local` and in Vercel. The page and `/api/products` revalidate every 5 minutes; if the sheet is unreachable the built-in catalogue is served.
 
-#### Start the Backend
-```bash
-cd backend-app
-npm run start:dev
-```
-The server will start on `http://localhost:4000`.
+## Privacy rules
 
-#### Start the Frontend
-```bash
-cd frontend/frontend-app
-npm start
-```
-The application will be available at `http://localhost:3000`.
+The public payload (`toClientProduct`) never includes SKUs or exact stock counts — each variant is only `in` or `low` ("few left"), sold-out variants are dropped, and products with ≤3 units total get an "Only a few left" badge.
 
----
+## Deploy
 
-## 💡 Key Functionalities
-
-1. **Product Browsing**: Dynamic catalog fetched from the backend.
-2. **Shopping Cart**: Persistent cart management using React Context.
-3. **Checkout System**: Streamlined process to capture customer details and place orders.
-4. **Admin Dashboard**: View and manage all orders placed through the system.
-5. **Real-time Notifications**: Toast notifications for user actions (e.g., adding to cart).
-
----
-
-## 📝 API Endpoints
-
-- `GET /products`: Retrieve all products.
-- `GET /products/:id`: Get specific product details.
-- `POST /orders`: Submit a new customer order.
-- `GET /orders`: Fetch all orders (Admin only).
-
----
-
-## 🛠️ CI/CD and DevOps
-
-This project includes:
-- **Docker Support**: Multi-stage Dockerfiles for optimized production builds.
-- **Docker Compose**: Orchestration for easy local development and deployment.
-- **GitHub Actions**: Automated CI pipeline that runs tests and builds Docker images on every push to `main` or `master`.
+Import the repo in Vercel (framework preset: Next.js, root directory: repo root) and add `PRODUCTS_SHEET_CSV_URL`. GitHub Pages is no longer used — it cannot run the server routes.
