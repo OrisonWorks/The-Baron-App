@@ -5,7 +5,7 @@ import { Menu, Search, ShoppingBag, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCart } from "@/context/cart-context";
-import { WA_DISPLAY } from "@/lib/utils";
+import { scrollBehavior, WA_DISPLAY } from "@/lib/utils";
 
 export function Header({ search, setSearch }: { search: string; setSearch: (v: string) => void }) {
   const { count, setOpen } = useCart();
@@ -46,7 +46,7 @@ export function Header({ search, setSearch }: { search: string; setSearch: (v: s
             value={search}
             onChange={(e) => {
               const v = e.target.value;
-              if (v && !search) document.getElementById("shop")?.scrollIntoView({ behavior: "smooth" });
+              if (v && !search) document.getElementById("shop")?.scrollIntoView({ behavior: scrollBehavior() });
               setSearch(v);
             }}
             className="rounded-full"

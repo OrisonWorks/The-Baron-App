@@ -17,6 +17,10 @@ Log of everything implemented/updated, newest first. Keep this updated in every 
 - Inventory from the published Google Sheet (`PRODUCTS_SHEET_CSV_URL`, stock-sheet template in `docs/`), fallback = the 16 watches + photos from the original site (photos resized to ≤1200px).
 - WhatsApp bag: name, number, area, delivery choice → formatted order message to +260 974 128 784. Floating WhatsApp button, mobile sticky bag bar, back-to-top.
 
+## 2026-11-09 — QA fixes
+- Checkout now rejects invalid WhatsApp numbers (`isValidPhone`: 9–15 digits, only digits/space/+/-/brackets) and blank names, before opening WhatsApp or clearing the bag.
+- All JS scrolling (category jump, search, back-to-top) uses `scrollBehavior()`, which returns `auto` under `prefers-reduced-motion`.
+
 ## Pending / next
 
 - Vercel project + `PRODUCTS_SHEET_CSV_URL` (needs Tumelo — no Vercel team access from Devin yet). Custom domain recommended (MTN Zambia can't reach `*.vercel.app`).
