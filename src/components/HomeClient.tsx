@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { CartDrawer } from "@/components/CartDrawer";
+import { ChatWidget } from "@/components/ChatWidget";
 import { Header } from "@/components/Header";
 import { QuickView } from "@/components/QuickView";
 import { Categories, Contact, FloatingActions, Footer, Hero, HowToOrder, WhyUs } from "@/components/Sections";
@@ -56,7 +57,7 @@ export function HomeClient({ products }: { products: ClientProduct[] }) {
       <Footer />
       <QuickView product={quick} onClose={() => setQuick(null)} />
       <CartDrawer />
-      <FloatingActions />
+      <FloatingActions chat={<ChatWidget products={products} onView={setQuick} />} />
     </>
   );
 }
