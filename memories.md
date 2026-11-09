@@ -23,6 +23,7 @@ Log of everything implemented/updated, newest first. Keep this updated in every 
 
 ## 2026-11-09 — Chat helper (ported from Petal Steps)
 - `ChatWidget` (gold bubble in the floating-actions stack, above the WhatsApp button): rule-based, no API. Answers from live products — single product match (name/brand/variant words) with per-variant availability ("in stock"/"only a few left", never counts), brand ("any Invicta?"), category/range ("premium watches", "earphones" → landing soon), budget ("watches under K2000"). FAQ: payment (details sent on WhatsApp), delivery (Lusaka, free above K500 — unconfirmed), condition/warranty, returns, contact, location, how to order. "View" buttons open the product quick view; everything else deep-links to WhatsApp.
+- Back-to-top hides while the chat panel is open (`group-has-[[aria-expanded=true]]:hidden`) — the panel otherwise covers it once scrolled.
 - Only facts already on the site are used — no hours, payment numbers or address until Aaron supplies them.
 
 ## Pending / next
