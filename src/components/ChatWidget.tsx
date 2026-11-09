@@ -149,7 +149,7 @@ export function ChatWidget({ products, onView }: { products: ClientProduct[]; on
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [msgs, setMsgs] = useState<Msg[]>([
-    { from: "bot", text: `Hi! I'm the ${BRAND} helper. Ask me about a product, a brand, prices, delivery or how to order.` },
+    { from: "bot", text: `Hi! I'm ${BRAND}'s helper. Ask me about a product, a brand, prices, delivery or how to order.` },
   ]);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -225,7 +225,7 @@ export function ChatWidget({ products, onView }: { products: ClientProduct[]; on
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                aria-label={`Message the ${BRAND} helper`}
+                aria-label={`Message ${BRAND}'s helper`}
                 placeholder="Ask about a product, brand, delivery…"
                 className="h-10 flex-1 rounded-xl border border-line bg-panel-2 px-3 text-sm text-stone-100 outline-none focus:border-gold"
               />
