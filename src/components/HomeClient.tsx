@@ -6,6 +6,7 @@ import { QuickView } from "@/components/QuickView";
 import { Categories, Contact, FloatingActions, Footer, Hero, HowToOrder, WhyUs } from "@/components/Sections";
 import { Shop, type ShopState } from "@/components/Shop";
 import { CATEGORIES, type CategoryId, type ClientProduct } from "@/lib/products";
+import { scrollBehavior } from "@/lib/utils";
 
 const SORTS = ["featured", "low", "high", "name"];
 
@@ -17,7 +18,7 @@ export function HomeClient({ products }: { products: ClientProduct[] }) {
 
   const goCat = useCallback((cat: CategoryId) => {
     setState({ cat, brand: null, type: null, gender: null });
-    document.getElementById("shop")?.scrollIntoView({ behavior: "smooth" });
+    document.getElementById("shop")?.scrollIntoView({ behavior: scrollBehavior() });
   }, [setState]);
 
   // Deep-link shop state: ?cat / ?brand / ?sort / ?q survive refresh and can be shared.

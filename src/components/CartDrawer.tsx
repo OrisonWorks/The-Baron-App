@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { WaIcon } from "@/components/Sections";
 import { useCart } from "@/context/cart-context";
-import { BRAND, money, WA_DISPLAY, waLink } from "@/lib/utils";
+import { BRAND, isValidPhone, money, WA_DISPLAY, waLink } from "@/lib/utils";
 
 const DELIVERY = [
   "Lusaka delivery",
@@ -24,6 +24,11 @@ export function CartDrawer() {
   const checkout = (e: React.FormEvent) => {
     e.preventDefault();
     if (!items.length) return toast.error("Your bag is empty — add something first");
+    if (!form.name.trim()) return toast.error("Please enter your name");
+    if (!isValidPhone(form.phone)) {
+      document.getElementById("bag-phone")?.focus();
+      return toast.error("Please enter a valid WhatsApp number, e.g. 097 000 0000");
+    }
     const lines = items
       .map((i) => `• ${i.name}${i.variant !== "Standard" ? ` (${i.variant})` : ""} × ${i.qty} — ${money(i.price * i.qty)}`)
       .join("\n");

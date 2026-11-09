@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { CAT_ICON } from "@/components/ProductImage";
 import { useCart } from "@/context/cart-context";
 import { CATEGORIES, type CategoryId, type ClientProduct } from "@/lib/products";
-import { BRAND, money, TAGLINE, WA_CATALOG, WA_DISPLAY, waLink } from "@/lib/utils";
+import { BRAND, money, scrollBehavior, TAGLINE, WA_CATALOG, WA_DISPLAY, waLink } from "@/lib/utils";
 
 export const WaIcon = ({ className = "h-5 w-5" }: { className?: string }) => (
   <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
@@ -190,7 +190,7 @@ export function FloatingActions() {
       )}
       <div className={`fixed right-4 z-30 flex flex-col items-end gap-2 ${count > 0 ? "bottom-20 md:bottom-6" : "bottom-6"}`}>
         {top && (
-          <button onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} aria-label="Back to top" className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-line bg-panel text-stone-200 hover:border-gold">
+          <button onClick={() => window.scrollTo({ top: 0, behavior: scrollBehavior() })} aria-label="Back to top" className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-line bg-panel text-stone-200 hover:border-gold">
             <ArrowUp className="h-4 w-4" />
           </button>
         )}
