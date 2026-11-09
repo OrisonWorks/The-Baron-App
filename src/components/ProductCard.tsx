@@ -23,14 +23,14 @@ export function ProductCard({ product, onQuick }: { product: ClientProduct; onQu
         )}
       </button>
       <div className="flex flex-1 flex-col gap-1 p-4">
-        <span className="text-[11px] font-semibold uppercase tracking-widest text-gold">{meta}</span>
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-accent">{meta}</span>
         <h3 className="font-semibold leading-snug">
-          <button type="button" className="cursor-pointer text-left hover:text-gold-light" onClick={() => onQuick(product)}>{product.name}</button>
+          <button type="button" className="cursor-pointer text-left hover:text-accent-2" onClick={() => onQuick(product)}>{product.name}</button>
         </h3>
         <p className="text-xs text-mist">
           {single ? (product.variants[0].label !== "Standard" ? product.variants[0].label : "In stock") : `${product.variants.length} options in stock`}
         </p>
-        <strong className="mt-auto pt-2 text-lg text-gold-light">{priceLabel(product)}</strong>
+        <strong className="mt-auto pt-2 text-lg text-accent-2">{priceLabel(product)}</strong>
         <div className="mt-2 flex gap-2">
           {single ? (
             <Button size="sm" className="flex-1" onClick={() => { add(product, product.variants[0].label); setOpen(true); }}>Add to bag</Button>

@@ -26,7 +26,7 @@ function Chips({ label, values, value, onChange }: { label: string; values: stri
           key={v}
           onClick={() => onChange(value === v ? null : v)}
           aria-pressed={value === v}
-          className={cn("shrink-0 cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold", value === v ? "border-gold bg-gold text-ink" : "border-line text-stone-300 hover:border-gold")}
+          className={cn("shrink-0 cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold", value === v ? "border-gold bg-gold text-on-gold" : "border-line text-fg-2 hover:border-gold")}
         >
           {v}
         </button>
@@ -64,7 +64,7 @@ export function Shop({ products, state, setState, search, onQuick }: {
   return (
     <section id="shop" className="mx-auto w-[min(1200px,92%)] scroll-mt-28 py-14">
       <div className="mb-8 text-center">
-        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-gold">The shop</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">The shop</p>
         <h2 className="mt-2 font-display text-3xl font-semibold sm:text-4xl">Shop {BRAND}</h2>
         <p className="mt-2 text-mist">Tap any item for options and details, then send your bag on WhatsApp.</p>
       </div>
@@ -75,7 +75,7 @@ export function Shop({ products, state, setState, search, onQuick }: {
             role="tab"
             aria-selected={state.cat === t.id}
             onClick={() => setState({ cat: t.id, brand: null, type: null, gender: null })}
-            className={cn("shrink-0 cursor-pointer rounded-full border px-4 py-2 text-sm font-semibold", state.cat === t.id ? "border-gold bg-gold text-ink" : "border-line bg-panel text-stone-200 hover:border-gold")}
+            className={cn("shrink-0 cursor-pointer rounded-full border px-4 py-2 text-sm font-semibold", state.cat === t.id ? "border-gold bg-gold text-on-gold" : "border-line bg-panel text-fg hover:border-gold")}
           >
             {t.label}
           </button>
@@ -89,7 +89,7 @@ export function Shop({ products, state, setState, search, onQuick }: {
         </div>
         <label className="flex items-center gap-2 text-sm text-mist">
           <span className="sr-only">Sort</span>
-          <select value={state.sort} onChange={(e) => setState({ sort: e.target.value })} className="h-10 rounded-full border border-line bg-panel px-4 text-sm text-stone-100 outline-none focus:border-gold">
+          <select value={state.sort} onChange={(e) => setState({ sort: e.target.value })} className="h-10 rounded-full border border-line bg-panel px-4 text-sm text-fg outline-none focus:border-gold">
             <option value="featured">Sort: Featured</option>
             <option value="low">Price: Low to high</option>
             <option value="high">Price: High to low</option>

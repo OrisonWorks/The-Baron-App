@@ -17,13 +17,13 @@ const SheetContent = React.forwardRef<
     <SheetPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-[420px] flex-col border-l border-line bg-panel text-stone-100 shadow-2xl",
+        "fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-[420px] flex-col border-l border-line bg-panel text-fg shadow-2xl",
         className
       )}
       {...props}
     >
       {children}
-      <SheetPrimitive.Close className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-ink border border-line text-stone-100">
+      <SheetPrimitive.Close className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-ink border border-line text-fg">
         <X className="h-4 w-4" />
         <span className="sr-only">Close</span>
       </SheetPrimitive.Close>

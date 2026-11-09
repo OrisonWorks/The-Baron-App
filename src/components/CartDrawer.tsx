@@ -15,7 +15,7 @@ const DELIVERY = [
   "Out of town — courier",
 ];
 const EMPTY_FORM = { name: "", phone: "", area: "", delivery: DELIVERY[0] };
-const selectCls = "h-11 w-full rounded-xl border border-line bg-panel-2 px-4 text-sm text-stone-100 outline-none focus:border-gold";
+const selectCls = "h-11 w-full rounded-xl border border-line bg-panel-2 px-4 text-sm text-fg outline-none focus:border-gold";
 
 export function CartDrawer() {
   const { items, open, setOpen, inc, dec, remove, clear, subtotal } = useCart();
@@ -51,7 +51,7 @@ export function CartDrawer() {
         <div className="flex-1 space-y-4 overflow-y-auto p-5">
           {!items.length && (
             <div className="flex flex-col items-center gap-3 py-8 text-center text-mist">
-              <ShoppingBag className="h-10 w-10 text-gold/60" strokeWidth={1.2} />
+              <ShoppingBag className="h-10 w-10 text-accent/60" strokeWidth={1.2} />
               <p>Your bag is empty.</p>
               <Button variant="outline" size="sm" onClick={() => setOpen(false)} asChild><a href="#shop">Browse the shop</a></Button>
             </div>
@@ -68,14 +68,14 @@ export function CartDrawer() {
                 </div>
               </div>
               <div className="text-right">
-                <strong className="text-sm text-gold-light">{money(i.price * i.qty)}</strong>
+                <strong className="text-sm text-accent-2">{money(i.price * i.qty)}</strong>
                 <button className="mt-2 flex cursor-pointer items-center gap-1 text-xs font-semibold text-mist hover:text-red-400" onClick={() => remove(i.key)}><Trash2 className="h-3 w-3" /> Remove</button>
               </div>
             </div>
           ))}
         </div>
         <form onSubmit={checkout} className="space-y-2 border-t border-line p-5">
-          <div className="flex justify-between pb-1 text-base"><span>Total</span><strong className="text-gold-light">{money(subtotal)}</strong></div>
+          <div className="flex justify-between pb-1 text-base"><span>Total</span><strong className="text-accent-2">{money(subtotal)}</strong></div>
           <p className="text-xs text-mist">Free delivery on orders above K500. Out-of-town courier costs are confirmed on WhatsApp.</p>
           <label className="sr-only" htmlFor="bag-name">Your name</label>
           <Input id="bag-name" required placeholder="Your name" autoComplete="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />

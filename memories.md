@@ -26,6 +26,13 @@ Log of everything implemented/updated, newest first. Keep this updated in every 
 - Back-to-top hides while the chat panel is open (`group-has-[[aria-expanded=true]]:hidden`) — the panel otherwise covers it once scrolled.
 - Only facts already on the site are used — no hours, payment numbers or address until Aaron supplies them.
 
+## 2026-11-09 — Light theme default + dark toggle
+- Light theme is the default; sun/moon button in the header switches to the original black-and-gold dark theme. Choice saved in localStorage `baronTheme`; an inline `<head>` script applies it before paint (no flash); `<meta name="theme-color">` and Sonner toasts follow it.
+- Colours are CSS-variable tokens (`@theme inline` → `:root` light / `.dark` dark in `globals.css`). Use `text-fg`/`text-fg-2` for text, `text-accent`/`text-accent-2` for gold text (darker gold in light for contrast), `bg-gold` + `text-on-gold` for gold fills. Don't use raw `stone-*`/`white` text.
+- The hero carries `.dark` so it stays a dark band with the watch photo in both themes.
+- Theme constants + the init script live in `src/lib/theme.ts` (not the `"use client"` context file): values imported from a client module into the server `layout.tsx` arrive as client references, which rendered an empty `theme-color` meta.
+- Header tightened for phones so the toggle fits: smaller buttons below `sm`, and below 340px only the crest shows (no wordmark).
+
 ## Pending / next
 
 - Vercel project + `PRODUCTS_SHEET_CSV_URL` (needs Tumelo — no Vercel team access from Devin yet). Custom domain recommended (MTN Zambia can't reach `*.vercel.app`).
