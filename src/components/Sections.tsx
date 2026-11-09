@@ -170,7 +170,7 @@ export function Footer() {
 
 // Mobile: a sticky bar with the bag total once something is in it; otherwise a
 // WhatsApp chat button. Desktop always gets the chat button.
-export function FloatingActions() {
+export function FloatingActions({ chat }: { chat?: React.ReactNode }) {
   const { count, subtotal, setOpen } = useCart();
   const [top, setTop] = useState(false);
   useEffect(() => {
@@ -194,6 +194,7 @@ export function FloatingActions() {
             <ArrowUp className="h-4 w-4" />
           </button>
         )}
+        {chat}
         <a
           href={waLink(`Hello ${BRAND}, I'd like to enquire about your products.`)}
           target="_blank"

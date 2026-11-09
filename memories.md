@@ -21,6 +21,10 @@ Log of everything implemented/updated, newest first. Keep this updated in every 
 - Checkout now rejects invalid WhatsApp numbers (`isValidPhone`: 9–15 digits, only digits/space/+/-/brackets) and blank names, before opening WhatsApp or clearing the bag.
 - All JS scrolling (category jump, search, back-to-top) uses `scrollBehavior()`, which returns `auto` under `prefers-reduced-motion`.
 
+## 2026-11-09 — Chat helper (ported from Petal Steps)
+- `ChatWidget` (gold bubble in the floating-actions stack, above the WhatsApp button): rule-based, no API. Answers from live products — single product match (name/brand/variant words) with per-variant availability ("in stock"/"only a few left", never counts), brand ("any Invicta?"), category/range ("premium watches", "earphones" → landing soon), budget ("watches under K2000"). FAQ: payment (details sent on WhatsApp), delivery (Lusaka, free above K500 — unconfirmed), condition/warranty, returns, contact, location, how to order. "View" buttons open the product quick view; everything else deep-links to WhatsApp.
+- Only facts already on the site are used — no hours, payment numbers or address until Aaron supplies them.
+
 ## Pending / next
 
 - Vercel project + `PRODUCTS_SHEET_CSV_URL` (needs Tumelo — no Vercel team access from Devin yet). Custom domain recommended (MTN Zambia can't reach `*.vercel.app`).
