@@ -182,16 +182,16 @@ export function ChatWidget({ products, onView }: { products: ClientProduct[]; on
           className={`fixed right-3 z-40 flex h-[min(480px,65vh)] w-[min(350px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-line bg-panel shadow-2xl shadow-black/60 md:bottom-36 md:right-5 ${count > 0 ? "bottom-48" : "bottom-36"}`}
         >
           <div className="flex items-center gap-2 border-b border-line bg-ink px-4 py-3">
-            <MessageCircle className="h-4 w-4 text-gold" />
-            <span className="font-display text-sm font-semibold tracking-wider text-gold-light">{BRAND} helper</span>
-            <button onClick={() => setOpen(false)} className="ml-auto cursor-pointer rounded-lg p-1 text-stone-300 hover:bg-white/10" aria-label="Close chat">
+            <MessageCircle className="h-4 w-4 text-accent" />
+            <span className="font-display text-sm font-semibold tracking-wider text-accent-2">{BRAND} helper</span>
+            <button onClick={() => setOpen(false)} className="ml-auto cursor-pointer rounded-lg p-1 text-fg-2 hover:bg-fg/10" aria-label="Close chat">
               <X className="h-4 w-4" />
             </button>
           </div>
           <div ref={listRef} className="flex-1 space-y-2 overflow-y-auto p-3" aria-live="polite">
             {msgs.map((m, i) => (
               <div key={i} className={m.from === "bot" ? "pr-6" : "pl-8"}>
-                <div className={`rounded-2xl px-3 py-2 text-sm leading-relaxed ${m.from === "bot" ? "rounded-tl-sm bg-panel-2 text-stone-200" : "rounded-tr-sm bg-gold text-ink"}`}>
+                <div className={`rounded-2xl px-3 py-2 text-sm leading-relaxed ${m.from === "bot" ? "rounded-tl-sm bg-panel-2 text-fg" : "rounded-tr-sm bg-gold text-on-gold"}`}>
                   {m.text}
                   {m.actions && (
                     <div className="mt-2 space-y-1.5">
@@ -201,7 +201,7 @@ export function ChatWidget({ products, onView }: { products: ClientProduct[]; on
                             {a.label}
                           </a>
                         ) : (
-                          <button key={a.label} onClick={() => { setOpen(false); onView(a.product); }} className={`${actionCls} w-full cursor-pointer border border-gold/60 text-gold-light hover:bg-gold/10`}>
+                          <button key={a.label} onClick={() => { setOpen(false); onView(a.product); }} className={`${actionCls} w-full cursor-pointer border border-gold/60 text-accent-2 hover:bg-gold/10`}>
                             {a.label}
                           </button>
                         )
@@ -215,7 +215,7 @@ export function ChatWidget({ products, onView }: { products: ClientProduct[]; on
           <div className="border-t border-line p-2">
             <div className="mb-2 flex flex-wrap gap-1.5">
               {QUICK.map((chip) => (
-                <button key={chip} onClick={() => send(chip)} className="cursor-pointer rounded-full border border-line px-2.5 py-1 text-[11px] font-semibold text-gold-light hover:border-gold">
+                <button key={chip} onClick={() => send(chip)} className="cursor-pointer rounded-full border border-line px-2.5 py-1 text-[11px] font-semibold text-accent-2 hover:border-gold">
                   {chip}
                 </button>
               ))}
@@ -227,9 +227,9 @@ export function ChatWidget({ products, onView }: { products: ClientProduct[]; on
                 onChange={(e) => setInput(e.target.value)}
                 aria-label={`Message ${BRAND}'s helper`}
                 placeholder="Ask about a product, brand, delivery…"
-                className="h-10 flex-1 rounded-xl border border-line bg-panel-2 px-3 text-sm text-stone-100 outline-none focus:border-gold"
+                className="h-10 flex-1 rounded-xl border border-line bg-panel-2 px-3 text-sm text-fg outline-none focus:border-gold"
               />
-              <button type="submit" className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl bg-gold text-ink hover:bg-gold-light" aria-label="Send">
+              <button type="submit" className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl bg-gold text-on-gold hover:bg-gold-light" aria-label="Send">
                 <Send className="h-4 w-4" />
               </button>
             </form>
@@ -240,7 +240,7 @@ export function ChatWidget({ products, onView }: { products: ClientProduct[]; on
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-label={open ? "Close chat" : `Chat with ${BRAND} helper`}
-        className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-full border border-gold/60 bg-ink text-gold shadow-lg shadow-black/40 hover:bg-panel"
+        className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-full border border-gold/60 bg-ink text-accent shadow-lg shadow-black/40 hover:bg-panel"
       >
         {open ? <X className="h-5 w-5" /> : <MessageCircle className="h-5 w-5" />}
       </button>

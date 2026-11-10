@@ -17,7 +17,7 @@ export function ProductImage({ src, alt, cat, className, sizes, priority }: {
     const Icon = CAT_ICON[cat];
     return (
       <div className={cn("flex items-center justify-center bg-gradient-to-br from-panel-2 to-ink", className)} role="img" aria-label={alt}>
-        <Icon className="h-14 w-14 text-gold/60" strokeWidth={1.2} />
+        <Icon className="h-14 w-14 text-accent/60" strokeWidth={1.2} />
       </div>
     );
   }

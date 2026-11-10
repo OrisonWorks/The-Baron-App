@@ -16,17 +16,17 @@ export const WaIcon = ({ className = "h-5 w-5" }: { className?: string }) => (
 
 export function Hero({ onSelect }: { onSelect: (c: CategoryId) => void }) {
   return (
-    <section id="top" className="relative isolate overflow-hidden">
+    <section id="top" className="dark relative isolate overflow-hidden bg-ink text-fg">
       <Image src="/hero/fossil-1.jpg" alt="" fill priority sizes="100vw" className="-z-10 object-cover opacity-55" />
       <div className="absolute inset-0 -z-10 bg-gradient-to-r from-ink via-ink/80 to-ink/20" />
       <div className="absolute inset-x-0 bottom-0 -z-10 h-32 bg-gradient-to-t from-ink to-transparent" />
       <div className="mx-auto flex min-h-[540px] w-[min(1200px,92%)] flex-col justify-center gap-5 py-16 sm:min-h-[600px]">
-        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-gold">Lusaka, Zambia · Order on WhatsApp</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-accent">Lusaka, Zambia · Order on WhatsApp</p>
         <h1 className="max-w-2xl font-display text-[2rem] font-semibold leading-tight sm:text-6xl">
           <span className="text-gold-gradient">{BRAND}</span><br />
-          <span className="text-stone-100">{TAGLINE}</span>
+          <span className="text-fg">{TAGLINE}</span>
         </h1>
-        <p className="max-w-xl text-base text-stone-300 sm:text-lg">
+        <p className="max-w-xl text-base text-fg-2 sm:text-lg">
           Fossil, Invicta and Timex down to Naviforce, Curren and Casio — plus phones, audio, accessories, body care and clothing. Pick it here, order it on WhatsApp.
         </p>
         <div className="flex flex-wrap gap-3">
@@ -42,7 +42,7 @@ export function Categories({ products, onSelect }: { products: ClientProduct[]; 
   return (
     <section id="categories" className="mx-auto w-[min(1200px,92%)] py-14">
       <div className="mb-8 text-center">
-        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-gold">Shop by category</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">Shop by category</p>
         <h2 className="mt-2 font-display text-3xl font-semibold sm:text-4xl">Everything The Baron carries</h2>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -55,10 +55,10 @@ export function Categories({ products, onSelect }: { products: ClientProduct[]; 
               onClick={() => onSelect(c.id)}
               className="group flex cursor-pointer flex-col gap-3 rounded-2xl border border-line bg-panel p-5 text-left transition-colors hover:border-gold"
             >
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-gold/10 text-gold group-hover:bg-gold group-hover:text-ink"><Icon className="h-5 w-5" /></span>
-              <span className="font-semibold text-stone-100">{c.label}</span>
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-gold/10 text-accent group-hover:bg-gold group-hover:text-on-gold"><Icon className="h-5 w-5" /></span>
+              <span className="font-semibold text-fg">{c.label}</span>
               <span className="text-xs leading-relaxed text-mist">{c.blurb}</span>
-              <span className="mt-auto text-xs font-semibold text-gold-light">{n ? `${n} item${n === 1 ? "" : "s"}` : "Landing soon"}</span>
+              <span className="mt-auto text-xs font-semibold text-accent-2">{n ? `${n} item${n === 1 ? "" : "s"}` : "Landing soon"}</span>
             </button>
           );
         })}
@@ -82,15 +82,15 @@ export function HowToOrder() {
     <section id="how" className="border-y border-line bg-panel/60">
       <div className="mx-auto w-[min(1200px,92%)] py-14">
         <div className="mb-8 text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-gold">How to order</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">How to order</p>
           <h2 className="mt-2 font-display text-3xl font-semibold sm:text-4xl">Three steps. No account needed.</h2>
         </div>
         <ol className="grid gap-4 md:grid-cols-3">
           {steps.map((s, i) => (
             <li key={s.title} className="rounded-2xl border border-line bg-ink p-6">
               <div className="mb-4 flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-full border border-gold/50 font-display text-gold">{i + 1}</span>
-                <s.icon className="h-5 w-5 text-gold-light" />
+                <span className="flex h-10 w-10 items-center justify-center rounded-full border border-gold/50 font-display text-accent">{i + 1}</span>
+                <s.icon className="h-5 w-5 text-accent-2" />
               </div>
               <h3 className="font-semibold">{s.title}</h3>
               <p className="mt-1 text-sm text-mist">{s.text}</p>
@@ -114,7 +114,7 @@ export function WhyUs() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {items.map((i) => (
           <div key={i.title} className="rounded-2xl border border-line bg-panel p-6">
-            <i.icon className="mb-3 h-6 w-6 text-gold" />
+            <i.icon className="mb-3 h-6 w-6 text-accent" />
             <h3 className="font-semibold">{i.title}</h3>
             <p className="mt-1 text-sm text-mist">{i.text}</p>
           </div>
@@ -130,7 +130,7 @@ export function Contact() {
       <div className="grid items-center gap-8 overflow-hidden rounded-3xl border border-gold/30 bg-gradient-to-br from-panel-2 via-panel to-ink p-8 md:grid-cols-[1fr_auto] md:p-12">
         <div>
           <h2 className="font-display text-3xl font-semibold text-gold-gradient">Looking for something specific?</h2>
-          <p className="mt-2 max-w-xl text-stone-300">New stock lands often and not everything is online yet. Tell us the brand, model or budget and we&apos;ll check for you.</p>
+          <p className="mt-2 max-w-xl text-fg-2">New stock lands often and not everything is online yet. Tell us the brand, model or budget and we&apos;ll check for you.</p>
         </div>
         <Button size="lg" variant="whatsapp" asChild>
           <a href={waLink(`Hi ${BRAND}! I'm looking for `)} target="_blank" rel="noopener noreferrer"><WaIcon /> Chat on WhatsApp</a>
@@ -149,16 +149,16 @@ export function Footer() {
           <p className="mt-3 max-w-sm text-sm text-mist">Premium accessories delivered to your door. Order via WhatsApp for a personal experience.</p>
         </div>
         <div>
-          <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.25em] text-gold">Shop</h4>
-          <ul className="space-y-2 text-sm text-stone-300">
-            {CATEGORIES.map((c) => <li key={c.id}><a className="hover:text-gold-light" href={`?cat=${c.id}#shop`}>{c.label}</a></li>)}
+          <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.25em] text-accent">Shop</h4>
+          <ul className="space-y-2 text-sm text-fg-2">
+            {CATEGORIES.map((c) => <li key={c.id}><a className="hover:text-accent-2" href={`?cat=${c.id}#shop`}>{c.label}</a></li>)}
           </ul>
         </div>
         <div>
-          <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.25em] text-gold">Contact</h4>
-          <ul className="space-y-2 text-sm text-stone-300">
-            <li><a className="hover:text-gold-light" href={waLink(`Hi ${BRAND}!`)} target="_blank" rel="noopener noreferrer">WhatsApp {WA_DISPLAY}</a></li>
-            <li><a className="hover:text-gold-light" href={WA_CATALOG} target="_blank" rel="noopener noreferrer">WhatsApp catalogue</a></li>
+          <h4 className="mb-3 text-xs font-semibold uppercase tracking-[0.25em] text-accent">Contact</h4>
+          <ul className="space-y-2 text-sm text-fg-2">
+            <li><a className="hover:text-accent-2" href={waLink(`Hi ${BRAND}!`)} target="_blank" rel="noopener noreferrer">WhatsApp {WA_DISPLAY}</a></li>
+            <li><a className="hover:text-accent-2" href={WA_CATALOG} target="_blank" rel="noopener noreferrer">WhatsApp catalogue</a></li>
             <li>Lusaka, Zambia</li>
           </ul>
         </div>
@@ -190,7 +190,7 @@ export function FloatingActions({ chat }: { chat?: React.ReactNode }) {
       )}
       <div className={`group fixed right-4 z-30 flex flex-col items-end gap-2 ${count > 0 ? "bottom-20 md:bottom-6" : "bottom-6"}`}>
         {top && (
-          <button onClick={() => window.scrollTo({ top: 0, behavior: scrollBehavior() })} aria-label="Back to top" className="flex group-has-[[aria-expanded=true]]:hidden h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-line bg-panel text-stone-200 hover:border-gold">
+          <button onClick={() => window.scrollTo({ top: 0, behavior: scrollBehavior() })} aria-label="Back to top" className="flex group-has-[[aria-expanded=true]]:hidden h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-line bg-panel text-fg hover:border-gold">
             <ArrowUp className="h-4 w-4" />
           </button>
         )}

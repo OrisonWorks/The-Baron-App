@@ -28,10 +28,10 @@ export function QuickView({ product, onClose }: { product: ClientProduct | null;
                 {product.type && <Badge variant="soft">{product.type}</Badge>}
                 {product.gender && <Badge variant="soft">{product.gender}</Badge>}
               </div>
-              {product.brand && <p className="text-xs font-semibold uppercase tracking-widest text-gold">{product.brand}</p>}
+              {product.brand && <p className="text-xs font-semibold uppercase tracking-widest text-accent">{product.brand}</p>}
               <DialogTitle className="text-2xl">{product.name}</DialogTitle>
               {product.desc ? <DialogDescription>{product.desc}</DialogDescription> : <DialogDescription className="sr-only">{product.name}</DialogDescription>}
-              <strong className="text-2xl text-gold-light">{money(chosen?.price ?? product.minPrice)}{!chosen && product.minPrice !== product.maxPrice ? "+" : ""}</strong>
+              <strong className="text-2xl text-accent-2">{money(chosen?.price ?? product.minPrice)}{!chosen && product.minPrice !== product.maxPrice ? "+" : ""}</strong>
               {(product.condition || product.warranty) && (
                 <dl className="grid grid-cols-2 gap-2 text-sm">
                   {product.condition && <div className="rounded-xl border border-line p-2"><dt className="text-[11px] uppercase tracking-wider text-mist">Condition</dt><dd>{product.condition}</dd></div>}
@@ -47,7 +47,7 @@ export function QuickView({ product, onClose }: { product: ClientProduct | null;
                         key={v.label}
                         onClick={() => setVariant(v.label)}
                         aria-pressed={variant === v.label}
-                        className={cn("cursor-pointer rounded-xl border px-3 py-2 text-left text-sm font-semibold", variant === v.label ? "border-gold bg-gold text-ink" : "border-line bg-panel-2 hover:border-gold")}
+                        className={cn("cursor-pointer rounded-xl border px-3 py-2 text-left text-sm font-semibold", variant === v.label ? "border-gold bg-gold text-on-gold" : "border-line bg-panel-2 hover:border-gold")}
                       >
                         {v.label}
                         <span className="block text-[11px] font-medium opacity-80">{money(v.price)} · {v.flag === "low" ? "few left" : "in stock"}</span>
