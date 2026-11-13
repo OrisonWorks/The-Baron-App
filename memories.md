@@ -44,3 +44,23 @@ Log of everything implemented/updated, newest first. Keep this updated in every 
 - `/api/products` and the sheet loader (`v.price >= 0`) now keep price-0 variants and drop products with zero in-stock variants (sold out never reaches the client).
 - Promos: `src/lib/promo.ts` (PROMOS list + POPUP_PROMO_ID — Aaron edits it), `PromoPopup` shows it once/day (localStorage `baronPromoSeen` = id:date), `Promos` section renders the big cards between Categories and Shop.
 - Prefilled stock sheet for Aaron: generator inline in session (saved /tmp), docs template stays the empty one. Sheet PHOTO uses `/catalog/<id>.jpg` (leading slash = site path).
+
+## 2026-11-06 — Admin side ported from Petal Steps
+
+Admin surface at `/admin` mirrors PetalSteps: passcode login (`baron_admin`
+cookie, HMAC-SHA256 of `ADMIN_PASSCODE`), dashboard KPIs, stock −/+ per
+variant (not EU sizes), edit product (name/brand/price/category/type/for/
+condition/warranty/photo/description — price applies to all variant rows),
+add product (variant rows with optional per-variant price), bulk CSV import
+(`baron-stock-template.csv`, one row per variant, rows grouped by model),
+receipts (TB-####, public link `/receipt/<no>?k=`), daily reports (CSV +
+jsPDF PDF), subscribers/unsubscribe/newsletter, leads (interest taps with
+no later sale), analytics. Storefront additions: Baron List signup section,
+consent banner (`baron-consent` localStorage), log-interest fired from the
+cart checkout (per item, contact only when consent given). Stock writer is
+`scripts/stock_writer.gs` rewritten for the Baron schema (SKU+VARIANT+STOCK;
+price_k written to every variant row; LOG tab uses VARIANT column).
+Needs env: ADMIN_PASSCODE, STOCK_WRITER_URL, STOCK_WRITER_TOKEN (+ REPORT_EMAIL
+script property for the daily digest). Verified end-to-end locally against a
+mock writer (login, sold, create-product, update, receipt, subscribe,
+log-interest, analytics, leads).
