@@ -39,3 +39,8 @@ Log of everything implemented/updated, newest first. Keep this updated in every 
 - Aaron's stock sheet + photos.
 - Phase 2: `/admin` (stock −/+, add product, bulk CSV) via an Apps Script writer like Petal Steps; then receipts, reports, mailing list, interest log.
 - Confirm delivery/payment policy text with Aaron ("Free delivery above K500" carried over from the old site).
+## 2026-11-13 — Aaron's real catalogue + promo areas
+- Fallback catalogue replaced by his WhatsApp Business catalogue export (53 items, photos in `public/catalog/<id>.jpg`): watches (Fossil/Invicta/Timex/Naviforce/Curren/Hugo Boss/Cheetah/Diesel/Adidas/Ice/Carrington), JBL audio, Lenovo pods, socks, ebook. `item()` helper in `src/lib/products.ts`; `price: 0` = "Ask for price" (`money()` handles 0), `stock: 0` = sold out.
+- `/api/products` and the sheet loader (`v.price >= 0`) now keep price-0 variants and drop products with zero in-stock variants (sold out never reaches the client).
+- Promos: `src/lib/promo.ts` (PROMOS list + POPUP_PROMO_ID — Aaron edits it), `PromoPopup` shows it once/day (localStorage `baronPromoSeen` = id:date), `Promos` section renders the big cards between Categories and Shop.
+- Prefilled stock sheet for Aaron: generator inline in session (saved /tmp), docs template stays the empty one. Sheet PHOTO uses `/catalog/<id>.jpg` (leading slash = site path).

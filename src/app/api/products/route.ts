@@ -6,6 +6,7 @@ export const revalidate = 300;
 
 export async function GET() {
   const { products, source } = await getProducts();
-  const list = products.map(toClientProduct);
+  // Products with no in-stock variant are sold out and never reach the client.
+  const list = products.map(toClientProduct).filter((p) => p.variants.length > 0);
   return NextResponse.json({ source, count: list.length, products: list });
 }

@@ -5,7 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export const money = (n: number) => "K" + n.toLocaleString("en-ZM");
+export const money = (n: number) => (n > 0 ? "K" + n.toLocaleString("en-ZM") : "Ask for price");
 export const BRAND = "The Baron";
 export const TAGLINE = "Premium Watches, Gadgets, and Accessories";
 export const WA_NUMBER = "260974128784";

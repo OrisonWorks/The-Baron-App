@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { CAT_ICON } from "@/components/ProductImage";
 import { useCart } from "@/context/cart-context";
 import { CATEGORIES, type CategoryId, type ClientProduct } from "@/lib/products";
+import { PROMOS } from "@/lib/promo";
 import { BRAND, money, scrollBehavior, TAGLINE, WA_CATALOG, WA_DISPLAY, waLink } from "@/lib/utils";
 
 export const WaIcon = ({ className = "h-5 w-5" }: { className?: string }) => (
@@ -67,6 +68,41 @@ export function Categories({ products, onSelect }: { products: ClientProduct[]; 
           <span className="font-semibold">Full WhatsApp catalogue</span>
           <span className="text-xs text-mist">See everything we have posted on WhatsApp.</span>
         </a>
+      </div>
+    </section>
+  );
+}
+
+// Big promo cards — Aaron edits src/lib/promo.ts to change them.
+export function Promos() {
+  const promos = PROMOS.filter((p) => p.enabled !== false);
+  if (!promos.length) return null;
+  return (
+    <section id="promos" className="mx-auto w-[min(1200px,92%)] pb-14">
+      <div className="mb-8 text-center">
+        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">Deals &amp; promotions</p>
+        <h2 className="mt-2 font-display text-3xl font-semibold sm:text-4xl">Featured this week</h2>
+      </div>
+      <div className="grid gap-5 sm:grid-cols-2">
+        {promos.map((p) => (
+          <a
+            key={p.id}
+            href={p.href ?? "#shop"}
+            className="group relative block overflow-hidden rounded-2xl border border-line bg-panel transition-colors hover:border-gold"
+          >
+            <div className="relative aspect-[16/9] w-full">
+              <Image src={p.img} alt="" fill sizes="(min-width: 640px) 560px, 92vw" className="object-cover transition-transform duration-500 group-hover:scale-105" />
+              <span className="absolute left-3 top-3 rounded-full bg-gold px-3 py-1 text-xs font-bold uppercase tracking-wider text-on-gold">{p.badge}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 p-5">
+              <div>
+                <h3 className="font-display text-lg font-semibold text-fg">{p.title}</h3>
+                <p className="mt-1 text-sm text-mist">{p.desc}</p>
+              </div>
+              <ArrowRight className="h-5 w-5 shrink-0 text-accent transition-transform group-hover:translate-x-1" />
+            </div>
+          </a>
+        ))}
       </div>
     </section>
   );
