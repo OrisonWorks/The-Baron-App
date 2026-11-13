@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { WaIcon } from "@/components/Sections";
 import { useCart } from "@/context/cart-context";
-import { BRAND, isValidPhone, money, WA_DISPLAY, waLink } from "@/lib/utils";
+import { BRAND, isValidPhone, money, WA_DISPLAY, waLink, waNumber } from "@/lib/utils";
+import { contactConsentGiven } from "@/lib/consent";
 
 const DELIVERY = [
   "Lusaka delivery",
@@ -33,6 +34,22 @@ export function CartDrawer() {
       .map((i) => `• ${i.name}${i.variant !== "Standard" ? ` (${i.variant})` : ""} × ${i.qty} — ${money(i.price * i.qty)}`)
       .join("\n");
     const msg = `Hi ${BRAND}! I'd like to order:\n\n${lines}\n\nTotal: ${money(subtotal)}\n\nName: ${form.name}\nNumber: ${form.phone}\nArea: ${form.area || "—"}\nDelivery: ${form.delivery}\n\nPlease confirm availability and payment details. Thank you!`;
+    // Fire-and-forget interest log — never blocks or errors the checkout.
+    items.forEach((i) =>
+      fetch("/api/log-interest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: i.name,
+          variant: i.variant !== "Standard" ? i.variant : "",
+          note: `qty ${i.qty}${form.area.trim() ? ` · in ${form.area.trim().replace(/[·\n]/g, ",").slice(0, 40)}` : ""} · ${form.delivery}`,
+          ...(contactConsentGiven() && (form.name.trim() || waNumber(form.phone))
+            ? { consent: true, contact: { name: form.name.trim().slice(0, 40), phone: waNumber(form.phone).slice(0, 15) } }
+            : {}),
+        }),
+        keepalive: true,
+      }).catch(() => {})
+    );
     // Open synchronously so mobile browsers don't treat it as a blocked popup.
     window.open(waLink(msg), "_blank");
     clear();

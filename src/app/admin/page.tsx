@@ -1,0 +1,2259 @@
+"use client";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import { toast } from "sonner";
+import type { Product, CategoryId } from "@/lib/products";
+import { CATEGORIES, CAT_LABEL, totalStock, priceOf } from "@/lib/products";
+import { amountInWords } from "@/lib/money-words";
+import { waLink, waNumber } from "@/lib/utils";
+import { parseCsv } from "@/lib/csv";
+import { useConfirm } from "@/components/ConfirmDialog";
+import { Pager, usePager } from "@/components/Pager";
+
+const inputCls =
+  "w-full rounded-lg border border-amber-100 bg-white px-3 py-2 text-sm outline-none focus:border-amber-300";
+
+type LogRow = { ts: string; action: string; model: string; variant: string; note: string };
+
+type Subscriber = { ts: string; email: string; status?: string };
+
+type ReceiptRow = {
+  no: string; date: string; client: string; phone: string; items: string;
+  amount: string | number; method: string; area?: string; heard?: string;
+};
+
+type AnalyticsData = {
+  log: LogRow[];
+  receipts: ReceiptRow[];
+  subscribers: Subscriber[];
+  receiptsSupported: boolean;
+  logSupported: boolean;
+  subsSupported: boolean;
+};
+
+// One shared fetch of log + receipts + subscribers for every admin panel.
+function useAnalytics() {
+  const [data, setData] = useState<AnalyticsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/analytics", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.ok) {
+        setData({
+          log: json.log || [],
+          receipts: json.receipts || [],
+          subscribers: json.subscribers || [],
+          receiptsSupported: json.receiptsSupported === true,
+          logSupported: json.logSupported !== false,
+          subsSupported: json.subsSupported !== false,
+        });
+      } else {
+        setData(null);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  return { data, loading, reload: load };
+}
+
+const dayOf = (ts: string | number | Date) => String(ts).slice(0, 10);
+
+// Maps a log row to the counter it affects. `undo` rows carry the same
+// "a→b" stock note as the write they reversed, so the direction says which
+// bucket to decrement: next>prev reversed a sale, next<prev a restock.
+const countAction = (r: LogRow): { kind: string; sign: number } => {
+  if (r.action !== "undo") return { kind: r.action, sign: 1 };
+  const m = String(r.note || "").split("→").map((x) => parseInt(x, 10));
+  return m.length === 2 && m.every((x) => !isNaN(x))
+    ? { kind: m[1] > m[0] ? "sold" : "restock", sign: -1 }
+    : { kind: "undo", sign: 1 };
+};
+
+// Pairs each `undo` with the original write it reversed — same model+variant
+// and the mirror-image note — and zeroes BOTH, so the sale is removed from
+// the day it happened (not netted off the undo's day). An undo whose
+// original predates the fetched window keeps its -1 fallback.
+type NetRow = { r: LogRow; kind: string; sign: number };
+const netLogRows = (rows: LogRow[]): NetRow[] => {
+  const out: NetRow[] = rows.map((r) => ({ r, ...countAction(r) }));
+  for (let i = out.length - 1; i >= 0; i--) {
+    const u = out[i];
+    if (u.r.action !== "undo" || u.kind === "undo") continue;
+    const m = String(u.r.note).split("→").map((x) => parseInt(x, 10));
+    const mirror = `${m[1]}→${m[0]}`;
+    for (let j = i - 1; j >= 0; j--) {
+      const o = out[j];
+      if (o.sign === 0 || o.r.action !== u.kind) continue;
+      if (o.r.model === u.r.model && String(o.r.variant) === String(u.r.variant) && String(o.r.note) === mirror) {
+        o.sign = 0;
+        u.sign = 0;
+        break;
+      }
+    }
+  }
+  return out;
+};
+
+function downloadCsv(name: string, headers: string[], rows: (string | number)[][]) {
+  const esc = (v: string | number) => {
+    let s = String(v);
+    // Leading =, +, -, @ executes as a formula when the CSV is opened in
+    // a spreadsheet — prefix with ' so the export stays inert.
+    if (/^\s*[=+\-@]/.test(s)) s = "'" + s;
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = [headers, ...rows].map((r) => r.map(esc).join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// Daily report as a branded PDF: logo header, KPI line, model table.
+// jsPDF loads lazily so the admin bundle doesn't pay for it on every page.
+async function exportReportPdf(day: string, net: { sold: number; interest: number; restock: number }, modelRows: [string, number, number, number][], styleOf: (model: string) => { name: string; brand: string } | null) {
+  const { jsPDF } = await import("jspdf");
+  const autoTable = (await import("jspdf-autotable")).default;
+  const doc = new jsPDF();
+  try {
+    const blob = await fetch("/brand/crest.png").then((r) => {
+      if (!r.ok) throw new Error("logo fetch failed");
+      return r.blob();
+    });
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(String(fr.result));
+      fr.onerror = () => reject(fr.error);
+      fr.readAsDataURL(blob);
+    });
+    doc.addImage(dataUrl, "PNG", 14, 10, 15, 15);
+  } catch {
+    // Logo is decorative — export still works without it.
+  }
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.setTextColor(36, 21, 27);
+  doc.text("The Baron — Daily report", 34, 18);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(120, 113, 108);
+  doc.text(day, 34, 24);
+  doc.setTextColor(36, 21, 27);
+  doc.setFontSize(11);
+  doc.text(`Pairs sold: ${net.sold}     Order taps: ${net.interest}     Restocks: ${net.restock}`, 14, 36);
+  autoTable(doc, {
+    startY: 42,
+    head: [["Style", "Model", "Sold", "Interest taps", "Restocks"]],
+    body: modelRows.map((r) => {
+      const s = styleOf(r[0]);
+      return [s ? `${s.name} · ${s.brand}` : r[0], s ? r[0] : "", String(r[1]), String(r[2]), String(r[3])];
+    }),
+    styles: { fontSize: 10 },
+    headStyles: { fillColor: [244, 63, 94] },
+  });
+  doc.save(`baron-report-${day}.pdf`);
+}
+
+function SubscribersPanel() {
+  const { ask, dialog } = useConfirm();
+  const [subs, setSubs] = useState<Subscriber[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    setFailed(false);
+    try {
+      const res = await fetch("/api/admin/subscribers", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        setFailed(true);
+        return;
+      }
+      setSubs(data.subscribers || []);
+    } catch {
+      setFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, []);
+
+  const active = subs.filter((s) => !s.status);
+  const pg = usePager([...subs].reverse(), 15);
+  const copyAll = async () => {
+    try {
+      await navigator.clipboard.writeText(active.map((s) => s.email).join(", "));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Copy failed — select the emails manually");
+    }
+  };
+
+  const optOut = async (email: string) => {
+    if (!(await ask({ title: `Opt out ${email}?`, body: "They'll stop receiving newsletters — their email stays on the list marked as opted out.", confirmLabel: "Opt out" }))) return;
+    try {
+      const res = await fetch("/api/admin/unsubscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        toast.error(data.error || "Couldn't mark opt-out");
+        return;
+      }
+      setSubs((list) => list.map((s) => (s.email === email ? { ...s, status: "stop" } : s)));
+      toast.success(`${email} opted out`);
+    } catch {
+      toast.error("Couldn't mark opt-out — network error");
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-amber-100 bg-white p-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 className="font-semibold text-stone-800">Baron List subscribers</h2>
+        {!loading && !failed && (
+          <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-600">
+            {active.length} active{subs.length - active.length ? ` · ${subs.length - active.length} opted out` : ""}
+          </span>
+        )}
+        {subs.length > 0 && (
+          <button
+            onClick={copyAll}
+            className="ml-auto rounded-lg bg-amber-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-amber-600"
+          >
+            {copied ? "Copied!" : "Copy all emails"}
+          </button>
+        )}
+      </div>
+      {loading ? (
+        <p className="mt-4 text-sm text-stone-400">Loading…</p>
+      ) : failed ? (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          Couldn't load the mailing list — the sheet writer may be down or out of date.
+          <button onClick={load} className="ml-3 font-semibold underline">Retry</button>
+        </div>
+      ) : subs.length === 0 ? (
+        <p className="mt-4 py-6 text-center text-sm text-stone-400">
+          No subscribers yet — signups from the site footer appear here.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+        <table className="min-w-[420px] mt-4 w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs uppercase tracking-wide text-stone-400">
+              <th className="pb-2">Email</th>
+              <th className="pb-2 text-right">Subscribed</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pg.slice.map((s, i) => (
+              <tr key={`${s.email}-${i}`} className="border-t border-amber-50">
+                <td className="py-2 font-semibold text-stone-700">
+                  {s.email}
+                  {s.status && (
+                    <span className="ml-2 rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-bold text-stone-500">
+                      opted out
+                    </span>
+                  )}
+                </td>
+                <td className="py-2 text-right text-stone-500">
+                  {String(s.ts).slice(0, 16).replace("T", " ")}
+                  {!s.status && (
+                    <button
+                      onClick={() => optOut(s.email)}
+                      title="Mark opted out (reply-STOP)"
+                      className="ml-3 rounded-lg bg-stone-100 px-2 py-0.5 text-[10px] font-bold text-stone-500 hover:bg-amber-100 hover:text-amber-600"
+                    >
+                      stop
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        </div>
+      )}
+      <Pager page={pg.page} pages={pg.pages} onPage={pg.setPage} />
+      <p className="mt-4 text-xs text-stone-400">
+        Stored on the SUBSCRIBERS tab of your stock sheet — “Copy all emails” gives the active
+        addresses for a BCC email or broadcast tool. Reply-STOP requests: hit “stop” on their row
+        and newsletters skip them.
+      </p>
+      {dialog}
+    </div>
+  );
+}
+
+function ReportsPanel({ products }: { products: Product[] }) {
+  const [day, setDay] = useState(() => new Date().toISOString().slice(0, 10));
+  const [loadedDay, setLoadedDay] = useState("");
+  const [rows, setRows] = useState<LogRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const load = async (d: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/report?day=${d}`, { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        toast.error(data.error || "Report failed");
+        return;
+      }
+      setRows(data.rows || []);
+      setLoaded(true);
+      setLoadedDay(d);
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => {
+    load(day);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Net counts: undo+original pairs drop out entirely; unpaired undos
+  // decrement the action they reversed.
+  const net = { sold: 0, interest: 0, restock: 0 };
+  const byModel = new Map<string, number>();
+  const interestByModel = new Map<string, number>();
+  const restockByModel = new Map<string, number>();
+  netLogRows(rows).forEach(({ r, kind, sign }) => {
+    if (kind === "sold" || kind === "restock" || kind === "interest") {
+      net[kind as keyof typeof net] += sign;
+      if (kind === "sold") byModel.set(r.model, (byModel.get(r.model) || 0) + sign);
+      if (kind === "interest") interestByModel.set(r.model, (interestByModel.get(r.model) || 0) + 1);
+      if (kind === "restock") restockByModel.set(r.model, (restockByModel.get(r.model) || 0) + sign);
+    }
+  });
+
+  const modelRows: [string, number, number, number][] = Array.from(
+    new Set([...byModel.keys(), ...interestByModel.keys(), ...restockByModel.keys()])
+  ).map((m) => [m, byModel.get(m) || 0, interestByModel.get(m) || 0, restockByModel.get(m) || 0]);
+  const pg = usePager(modelRows, 15);
+  const bySku = useMemo(() => new Map(products.map((p) => [p.sku, p])), [products]);
+  const styleOf = (m: string) => { const p = bySku.get(m); return p ? { name: p.name, brand: p.brand } : null; };
+  const exportPdf = () => {
+    exportReportPdf(loadedDay, net, modelRows, styleOf).catch(() => toast.error("PDF export failed"));
+  };
+
+  return (
+    <div className="rounded-2xl border border-amber-100 bg-white p-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 className="font-semibold text-stone-800">Daily report</h2>
+        <input
+          type="date"
+          value={day}
+          onChange={(e) => setDay(e.target.value)}
+          aria-label="Report date"
+          className="rounded-lg border border-amber-100 px-3 py-1.5 text-sm outline-none focus:border-amber-300"
+        />
+        <button
+          onClick={() => load(day)}
+          disabled={loading}
+          className="rounded-lg bg-amber-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-40"
+        >
+          {loading ? "Loading…" : "Load"}
+        </button>
+        {loaded && modelRows.length > 0 && (
+          <div className="ml-auto flex gap-2">
+            <button
+              onClick={() => downloadCsv(`baron-report-${loadedDay}.csv`, ["model", "name", "brand", "sold", "interest taps", "restocks"], modelRows.map(([m, s, t, rs]) => { const p = bySku.get(m); return [m, p?.name || "", p?.brand || "", s, t, rs]; }))}
+              className="rounded-lg bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-600 hover:bg-stone-200"
+            >
+              CSV / Excel
+            </button>
+            <button
+              onClick={exportPdf}
+              className="rounded-lg bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-600 hover:bg-stone-200"
+            >
+              Export PDF
+            </button>
+          </div>
+        )}
+      </div>
+      {loaded && (
+        <>
+          <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+            <div className="rounded-xl bg-amber-50 p-3">
+              <strong className="block text-2xl text-amber-600">{net.sold}</strong>
+              <span className="text-xs text-stone-500">units sold</span>
+            </div>
+            <div className="rounded-xl bg-stone-50 p-3">
+              <strong className="block text-2xl text-stone-700">{net.interest}</strong>
+              <span className="text-xs text-stone-500">order taps</span>
+            </div>
+            <div className="rounded-xl bg-stone-50 p-3">
+              <strong className="block text-2xl text-stone-700">{net.restock}</strong>
+              <span className="text-xs text-stone-500">restocks</span>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+          <table className="min-w-[480px] mt-4 w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wide text-stone-400">
+                <th className="pb-2">Style</th>
+                <th className="pb-2 text-right">Sold</th>
+                <th className="pb-2 text-right">Interest taps</th>
+                <th className="pb-2 text-right">Restocks</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pg.slice.map(([m, sold, taps, restocks]) => (
+                <tr key={m} className="border-t border-amber-50">
+                  <td className="py-2">
+                    <span className="font-semibold text-stone-700">{(() => { const s = styleOf(m); return s ? `${s.name} · ${s.brand}` : m; })()}</span>
+                    {bySku.has(m) && <span className="block text-xs text-stone-400">{m}</span>}
+                  </td>
+                  <td className="py-2 text-right">{sold}</td>
+                  <td className="py-2 text-right text-stone-500">{taps}</td>
+                  <td className="py-2 text-right text-stone-500">{restocks}</td>
+                </tr>
+              ))}
+              {net.sold === 0 && net.interest === 0 && net.restock === 0 && (
+                <tr><td colSpan={4} className="py-6 text-center text-stone-400">No activity this day</td></tr>
+              )}
+            </tbody>
+          </table>
+          </div>
+          <Pager page={pg.page} pages={pg.pages} onPage={pg.setPage} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function ReceiptPanel({ products }: { products: Product[] }) {
+  const { ask, dialog } = useConfirm();
+  const { data: aData } = useAnalytics();
+  const [form, setForm] = useState({
+    client: "",
+    phone: "",
+    email: "",
+    items: "",
+    amount: "",
+    words: "",
+    method: "Cash",
+    balance: "",
+    note: "",
+    area: "",
+    heard: "",
+  });
+  const knownPhones = new Set((aData?.receipts || []).map((r) => String(r.phone || "").replace(/[^0-9]/g, "")).filter(Boolean));
+  const isRepeat = form.phone.replace(/[^0-9]/g, "").length > 5 && knownPhones.has(form.phone.replace(/[^0-9]/g, ""));
+  const [saving, setSaving] = useState(false);
+  const [created, setCreated] = useState<{ no: string; key: string } | null>(null);
+  const [skuPick, setSkuPick] = useState("");
+  const [sizePick, setSizePick] = useState("");
+
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+  const amountNum = parseInt(form.amount.replace(/[^0-9]/g, ""), 10) || 0;
+
+  const addItem = () => {
+    const p = products.find((q) => q.sku === skuPick);
+    if (!p) return;
+    const line = `${p.name} (${p.sku})${sizePick ? ` — ${sizePick}` : ""} — K${priceOf(p)}`;
+    const items = form.items ? form.items + "\n" + line : line;
+    const amount = String((parseInt(form.amount.replace(/[^0-9]/g, ""), 10) || 0) + priceOf(p));
+    setForm((f) => ({ ...f, items, amount, words: amountInWords(parseInt(amount, 10)) }));
+    setSkuPick("");
+    setSizePick("");
+  };
+
+  const create = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.client.trim()) return toast.error("Client name required");
+    if (!(amountNum > 0)) return toast.error("Amount must be a positive number");
+    if (!(await ask({ title: `Create receipt for ${form.client.trim()}?`, body: `K${amountNum} — this writes to the sheet${form.email.trim() ? " and emails the client" : ""}.`, confirmLabel: "Create receipt" }))) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/receipt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) {
+        toast.error(d.error || "Receipt failed");
+        return;
+      }
+      setCreated({ no: d.no, key: d.key || "" });
+      toast.success(`Receipt ${d.no} created${d.emailed ? " and emailed" : ""}`);
+    } catch {
+      toast.error("Receipt failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const reset = () => {
+    setCreated(null);
+    setForm({ client: "", phone: "", email: "", items: "", amount: "", words: "", method: "Cash", balance: "", note: "", area: "", heard: "" });
+  };
+
+  if (created) {
+    const link = `${window.location.origin}/receipt/${created.no}?k=${created.key}`;
+    const shareText = `Your The Baron receipt ${created.no} — ${link}`;
+    return (
+      <div className="rounded-2xl border border-amber-100 bg-white p-6 text-center">
+        <p className="text-sm text-stone-500">Receipt created</p>
+        <p className="font-display mt-1 text-3xl font-semibold text-amber-600">{created.no}</p>
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
+          <a
+            href={form.phone ? `https://wa.me/${form.phone.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(shareText)}` : waLink(shareText)}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg bg-[#25D366] px-4 py-2 text-sm font-semibold text-white"
+          >
+            Send via WhatsApp
+          </a>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(link);
+              toast.success("Link copied");
+            }}
+            className="rounded-lg bg-stone-200 px-4 py-2 text-sm font-semibold text-stone-700"
+          >
+            Copy link
+          </button>
+          <a href={link} target="_blank" rel="noreferrer" className="rounded-lg bg-stone-200 px-4 py-2 text-sm font-semibold text-stone-700">
+            View receipt
+          </a>
+          <button onClick={reset} className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600">
+            New receipt
+          </button>
+        </div>
+        {!form.email && <p className="mt-3 text-xs text-stone-400">No client email given — nothing was emailed.</p>}
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={create} className="grid gap-3 rounded-2xl border border-amber-100 bg-white p-4 sm:grid-cols-2">
+      <h2 className="font-semibold text-stone-800 sm:col-span-2">New receipt</h2>
+      <label className="text-xs font-semibold text-stone-500">Received from<input required list="past-clients" value={form.client} onChange={set("client")} className={inputCls} placeholder="Client name" /></label>
+      <datalist id="past-clients">
+        {Array.from(new Set((aData?.receipts || []).map((r) => String(r.client || "").trim()).filter(Boolean))).map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
+      <label className="text-xs font-semibold text-stone-500">Client WhatsApp number{isRepeat && <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-600">repeat customer</span>}<input value={form.phone} onChange={set("phone")} className={inputCls} placeholder="e.g. 260971234567" /></label>
+      <label className="text-xs font-semibold text-stone-500">Client email (optional — sends a copy)<input type="email" value={form.email} onChange={set("email")} className={inputCls} placeholder="client@example.com" /></label>
+      <label className="text-xs font-semibold text-stone-500">Area / city<input value={form.area} onChange={set("area")} className={inputCls} placeholder="e.g. Woodlands, Kitwe, Ndola" /></label>
+      <label className="text-xs font-semibold text-stone-500">How did they hear?
+        <select value={form.heard} onChange={set("heard")} className={inputCls}>
+          <option value="">—</option>
+          <option>Facebook</option>
+          <option>Instagram</option>
+          <option>TikTok</option>
+          <option>WhatsApp status</option>
+          <option>A friend</option>
+          <option>Walk-in / saw the shop</option>
+          <option>Other</option>
+        </select>
+      </label>
+      <label className="text-xs font-semibold text-stone-500">Method
+        <select value={form.method} onChange={set("method")} className={inputCls}>
+          <option>Cash</option>
+          <option>Cheque</option>
+          <option>Mobile money</option>
+          <option>Bank transfer</option>
+        </select>
+      </label>
+      <div className="sm:col-span-2">
+        <span className="text-xs font-semibold text-stone-500">Payment for</span>
+        <div className="mt-1 flex flex-wrap gap-2">
+          <select value={skuPick} onChange={(e) => setSkuPick(e.target.value)} className="min-w-48 flex-1 rounded-lg border border-amber-100 bg-white px-3 py-2 text-sm outline-none focus:border-amber-300">
+            <option value="">Pick a product to add…</option>
+            {products.map((p) => <option key={p.sku} value={p.sku}>{p.name} ({p.sku}) — K{priceOf(p)}</option>)}
+          </select>
+          <select value={sizePick} onChange={(e) => setSizePick(e.target.value)} className="w-32 rounded-lg border border-amber-100 bg-white px-3 py-2 text-sm outline-none focus:border-amber-300">
+            <option value="">Variant</option>
+            {(products.find((q) => q.sku === skuPick)?.variants || []).map((v) => <option key={v.label} value={v.label}>{v.label}</option>)}
+          </select>
+          <button type="button" onClick={addItem} className="rounded-lg bg-stone-200 px-4 py-2 text-sm font-semibold text-stone-700 hover:bg-stone-300">+ Add</button>
+        </div>
+        <textarea value={form.items} onChange={set("items")} rows={3} className={`${inputCls} mt-2`} placeholder="e.g. Invicta Pro Diver (invicta-pro-diver-sapphire) — 43mm — K1750" />
+      </div>
+      <label className="text-xs font-semibold text-stone-500">Amount (K)
+        <input
+          required
+          inputMode="numeric"
+          value={form.amount}
+          onChange={(e) => {
+            const amount = e.target.value;
+            setForm((f) => ({ ...f, amount, words: amountInWords(parseInt(amount.replace(/[^0-9]/g, ""), 10) || 0) }));
+          }}
+          className={inputCls}
+          placeholder="450"
+        />
+      </label>
+      <label className="text-xs font-semibold text-stone-500">Balance<input value={form.balance} onChange={set("balance")} className={inputCls} placeholder="e.g. K0 or K100" /></label>
+      <label className="text-xs font-semibold text-stone-500 sm:col-span-2">Sum of (amount in words)<input value={form.words} onChange={set("words")} className={inputCls} placeholder="Auto-filled from amount" /></label>
+      <label className="text-xs font-semibold text-stone-500 sm:col-span-2">Note (optional)<input value={form.note} onChange={set("note")} className={inputCls} placeholder="e.g. deposit paid, balance on collection" /></label>
+      <button disabled={saving} className="rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-40 sm:col-span-2">
+        {saving ? "Creating…" : "Create receipt"}
+      </button>
+      {dialog}
+    </form>
+  );
+}
+
+
+function AddStylePanel({ onCreated }: { onCreated: () => void }) {
+  const { ask, dialog } = useConfirm();
+  const [form, setForm] = useState({
+    sku: "",
+    name: "",
+    brand: "",
+    price: "",
+    cat: "watches" as string,
+    type: "",
+    gender: "",
+    condition: "New",
+    warranty: "",
+    img: "",
+    desc: "",
+  });
+  // One row per variant (e.g. "43mm", "128GB Black", "500ml"). Price blank = base price.
+  const [rows, setRows] = useState<{ label: string; count: string; price: string }[]>([
+    { label: "Standard", count: "", price: "" },
+  ]);
+  const [saving, setSaving] = useState(false);
+
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+    setForm({ ...form, [k]: e.target.value });
+  const setRow = (i: number, k: "label" | "count" | "price") => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setRows(rows.map((r, j) => (j === i ? { ...r, [k]: e.target.value } : r)));
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const variants = rows
+      .map((r) => ({ label: r.label.trim() || "Standard", count: parseInt(r.count, 10) || 0, price: r.price.trim() }))
+      .filter((r) => r.count > 0);
+    const units = variants.reduce((n, r) => n + r.count, 0);
+    if (variants.length === 0) return toast.error("Add stock for at least one variant");
+    if (!(await ask({ title: `Add "${form.name.trim() || form.sku.trim()}" to the sheet?`, body: `${form.sku.trim()} · K${form.price.trim() || "0"} · ${units} unit(s) across ${variants.length} variant(s). It goes live on the shop in ~a minute.`, confirmLabel: "Add product" }))) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/create-product", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, variants }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) {
+        toast.error(d.error || "Create failed");
+        return;
+      }
+      toast.success(`${form.name} (${d.model}) added — live on the shop in ~a minute`);
+      onCreated();
+    } catch {
+      toast.error("Create failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="grid gap-4 rounded-2xl border border-amber-100 bg-white p-5 sm:grid-cols-2">
+      <p className="text-sm text-stone-500 sm:col-span-2">
+        Add a brand-new product to the sheet. Give it a code (e.g. the supplier SKU),
+        then add a variant row per option (size, storage, colour…) with starting stock.
+        It appears on the shop within ~a minute.
+      </p>
+      <label className="text-xs font-semibold text-stone-500">Product code<input required value={form.sku} onChange={set("sku")} className={inputCls} placeholder="e.g. NV-9304" /></label>
+      <label className="text-xs font-semibold text-stone-500">Name<input required value={form.name} onChange={set("name")} className={inputCls} placeholder="e.g. Naviforce Chrono" /></label>
+      <label className="text-xs font-semibold text-stone-500">Brand<input value={form.brand} onChange={set("brand")} className={inputCls} placeholder="e.g. Naviforce" /></label>
+      <label className="text-xs font-semibold text-stone-500">Base price (K — 0 = ask for price)<input required value={form.price} onChange={set("price")} className={inputCls} placeholder="e.g. 450" /></label>
+      <label className="text-xs font-semibold text-stone-500">Category
+        <select value={form.cat} onChange={set("cat")} className={inputCls}>
+          {CATEGORIES.map((c) => (
+            <option key={c.id} value={c.id}>{c.label}</option>
+          ))}
+        </select>
+      </label>
+      <label className="text-xs font-semibold text-stone-500">Type<input value={form.type} onChange={set("type")} className={inputCls} placeholder="e.g. Premium watch, Smartphone" /></label>
+      <label className="text-xs font-semibold text-stone-500">For<input value={form.gender} onChange={set("gender")} className={inputCls} placeholder="Men / Women / Unisex" /></label>
+      <label className="text-xs font-semibold text-stone-500">Condition<input value={form.condition} onChange={set("condition")} className={inputCls} placeholder="New" /></label>
+      <label className="text-xs font-semibold text-stone-500">Warranty<input value={form.warranty} onChange={set("warranty")} className={inputCls} placeholder="Optional" /></label>
+      <label className="text-xs font-semibold text-stone-500">Photo path / URL<input value={form.img} onChange={set("img")} className={inputCls} placeholder="/catalog/item.jpg or https://…" /></label>
+      <label className="text-xs font-semibold text-stone-500 sm:col-span-2">Description<textarea value={form.desc} onChange={set("desc")} rows={2} className={inputCls} placeholder="Optional — shown on the product card" /></label>
+      <div className="sm:col-span-2">
+        <p className="mb-2 text-xs font-semibold text-stone-500">Variants — label, stock, optional price override</p>
+        <div className="space-y-2">
+          {rows.map((r, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-2">
+              <input
+                value={r.label} onChange={setRow(i, "label")} placeholder="Variant — e.g. 43mm, 128GB Black"
+                className="w-48 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-amber-300"
+              />
+              <input
+                type="number" min={0} max={999} value={r.count} onChange={setRow(i, "count")} placeholder="stock"
+                className="w-20 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-center text-sm outline-none focus:border-amber-300"
+              />
+              <input
+                inputMode="numeric" value={r.price} onChange={setRow(i, "price")} placeholder="price (opt)"
+                className="w-24 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-amber-300"
+              />
+              {rows.length > 1 && (
+                <button type="button" onClick={() => setRows(rows.filter((_, j) => j !== i))} className="text-xs font-semibold text-stone-400 hover:text-amber-600">remove</button>
+              )}
+            </div>
+          ))}
+        </div>
+        <button type="button" onClick={() => setRows([...rows, { label: "", count: "", price: "" }])} className="mt-2 text-xs font-semibold text-amber-600 hover:text-amber-700">+ another variant</button>
+      </div>
+      <button disabled={saving} className="rounded-xl bg-amber-500 px-5 py-3 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-50 sm:col-span-2">
+        {saving ? "Adding…" : "Add product"}
+      </button>
+      {dialog}
+    </form>
+  );
+}
+
+const TEMPLATE_HEADER = ["model", "name", "brand", "category", "type", "for", "condition", "warranty", "price", "photo", "description", "variant", "stock", "variant_price"];
+const TEMPLATE_ROWS = [
+  ["NV-9304", "Naviforce Chrono", "Naviforce", "watches", "Affordable", "Men", "New", "", "450", "/catalog/nv-9304.jpg", "", "Standard", "3", ""],
+  ["IPH-15P", "iPhone 15 Pro", "Apple", "phones", "Smartphone", "", "New", "1 year", "", "", "", "128GB", "1", "10500"],
+  ["IPH-15P", "", "", "", "", "", "", "", "", "", "", "256GB", "2", "11500"],
+];
+
+function csvField(v: string): string {
+  return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+}
+
+type CsvItem = {
+  sku: string;
+  name: string;
+  brand: string;
+  price: string;
+  cat: string;
+  type: string;
+  gender: string;
+  condition: string;
+  warranty: string;
+  img: string;
+  desc: string;
+  variants: { label: string; count: number; price: string }[];
+  error?: string;
+  done?: boolean;
+  serverError?: string;
+};
+
+function columnMap(header: string[]): Map<string, number> {
+  const map = new Map<string, number>();
+  header.forEach((h, i) => {
+    const key = h.trim().toLowerCase();
+    if (!map.has(key)) map.set(key, i);
+  });
+  return map;
+}
+
+// One CSV row = one variant; rows sharing a model merge into one product.
+function csvToItems(rows: string[][], cols: Map<string, number>): CsvItem[] {
+  const get = (row: string[], names: string[]) => {
+    for (const n of names) {
+      const i = cols.get(n);
+      if (i !== undefined && (row[i] || "").trim()) return row[i].trim();
+    }
+    return "";
+  };
+  const bySku = new Map<string, CsvItem>();
+  const order: string[] = [];
+  const singles: CsvItem[] = [];
+  rows.forEach((row) => {
+    const sku = get(row, ["model", "sku", "code", "style"]);
+    if (!sku || sku.toUpperCase().startsWith("EX")) {
+      singles.push({ sku, name: "", brand: "", price: "", cat: "", type: "", gender: "", condition: "", warranty: "", img: "", desc: "", variants: [], error: sku ? "example row — delete it" : "missing model" });
+      return;
+    }
+    let it = bySku.get(sku);
+    if (!it) {
+      it = {
+        sku,
+        name: get(row, ["name", "title"]),
+        brand: get(row, ["brand", "make"]),
+        price: get(row, ["price", "price_k", "k"]),
+        cat: get(row, ["category", "cat"]),
+        type: get(row, ["type"]),
+        gender: get(row, ["for", "gender"]),
+        condition: get(row, ["condition"]),
+        warranty: get(row, ["warranty"]),
+        img: get(row, ["photo", "img", "image"]),
+        desc: get(row, ["description", "desc"]),
+        variants: [],
+      };
+      bySku.set(sku, it);
+      order.push(sku);
+    }
+    // later rows can fill blank fields
+    it.name ||= get(row, ["name", "title"]);
+    it.brand ||= get(row, ["brand", "make"]);
+    it.price ||= get(row, ["price", "price_k", "k"]);
+    it.cat ||= get(row, ["category", "cat"]);
+    it.img ||= get(row, ["photo", "img", "image"]);
+    it.desc ||= get(row, ["description", "desc"]);
+    const count = Math.max(0, parseInt(get(row, ["stock", "count", "qty"]), 10) || 0);
+    it.variants.push({
+      label: get(row, ["variant", "option", "size"]) || "Standard",
+      count,
+      price: get(row, ["variant_price", "variant price"]),
+    });
+  });
+  const items = order.map((sku) => bySku.get(sku)!);
+  // Same rules the server enforces, so bad rows are flagged before upload.
+  items.forEach((item) => {
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{1,29}$/.test(item.sku)) {
+      item.error = "bad product code";
+    } else if (!item.name) {
+      item.error = "name required";
+    } else if (item.price && !/^\d{1,7}$/.test(item.price)) {
+      item.error = "price must be a whole number";
+    } else if (!item.variants.some((v) => v.count > 0)) {
+      item.error = "no stock in any variant row";
+    }
+    item.variants = item.variants.filter((v) => v.count > 0);
+  });
+  return [...items, ...singles];
+}
+
+const BATCH_SIZE = 200; // matches MAX_ITEMS on /api/admin/create-products
+
+function BulkImport({ onDone }: { onDone: () => void }) {
+  const { ask, dialog } = useConfirm();
+  const [items, setItems] = useState<CsvItem[] | null>(null);
+  const [fileName, setFileName] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [results, setResults] = useState<{ model: string; ok: boolean; error?: string }[] | null>(null);
+
+  const downloadTemplate = () => {
+    const csv = [TEMPLATE_HEADER, ...TEMPLATE_ROWS].map((r) => r.map(csvField).join(",")).join("\n") + "\n";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    a.download = "baron-stock-template.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setFileName(file.name);
+    setResults(null);
+    const rows = parseCsv(await file.text());
+    if (rows.length < 2) {
+      toast.error("No data rows — need a header row plus at least one product row");
+      setItems(null);
+      return;
+    }
+    const cols = columnMap(rows[0]);
+    if (![..."model,sku,code,style".split(",")].some((n) => cols.has(n)) || !cols.has("name") && !cols.has("title")) {
+      toast.error("Header row needs at least a model and a name column");
+      setItems(null);
+      return;
+    }
+    setItems(csvToItems(rows.slice(1), cols));
+  };
+
+  const importItems = async () => {
+    if (!items) return;
+    // Only rows that haven't succeeded — retrying a created model just
+    // earns a "model already exists" rejection.
+    const pendingIdx = items
+      .map((it, i) => ({ it, i }))
+      .filter(({ it }) => !it.error && !it.done)
+      .map(({ i }) => i);
+    if (pendingIdx.length === 0) return;
+    if (!(await ask({ title: `Import ${pendingIdx.length} product${pendingIdx.length === 1 ? "" : "s"} to the sheet?`, body: "Each product is written as new variant rows. Products that already exist are rejected — re-imports are safe.", confirmLabel: "Import" }))) return;
+    setImporting(true);
+    setProgress(0);
+    // Track rows by position, not model code (duplicates share a code), and
+    // apply each batch's results immediately so a later failure can't drop
+    // rows that already landed on the sheet.
+    let current = [...items];
+    let added = 0;
+    let failed = 0;
+    let aborted = false;
+    try {
+      // The API caps at 200 items per request — chunk bigger files.
+      for (let off = 0; off < pendingIdx.length; off += BATCH_SIZE) {
+        const batchIdx = pendingIdx.slice(off, off + BATCH_SIZE);
+        const res = await fetch("/api/admin/create-products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: batchIdx.map((i) => current[i]) }),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || !d.ok) {
+          toast.error(d.error || "Import failed");
+          aborted = true;
+          break;
+        }
+        const batchResults: { model: string; ok: boolean; error?: string }[] = d.results || [];
+        // results[i] answers items[i] — zip by position, never by model.
+        batchResults.forEach((r, pos) => {
+          const rowIdx = batchIdx[pos];
+          if (rowIdx === undefined) return;
+          current[rowIdx] = r.ok
+            ? { ...current[rowIdx], done: true, serverError: undefined }
+            : { ...current[rowIdx], serverError: r.error };
+          if (r.ok) added++;
+          else failed++;
+        });
+        setItems([...current]);
+        setResults((prev) => [...(prev || []), ...batchResults]);
+        setProgress(Math.min(off + BATCH_SIZE, pendingIdx.length));
+      }
+      const left = current.filter((i) => !i.error && !i.done).length;
+      if (!aborted && failed === 0) {
+        toast.success(`${added} products added — live on the shop in ~a minute`);
+        if (left === 0) {
+          setItems(null);
+          onDone();
+        }
+      } else if (!aborted) {
+        toast.error(`${added} added, ${failed} failed — see below`);
+      }
+    } catch {
+      toast.error("Import failed");
+      setItems([...current]);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const valid = items?.filter((i) => !i.error && !i.done).length ?? 0;
+  const pg = usePager(items || [], 10);
+
+  return (
+    <div className="rounded-2xl border border-amber-100 bg-white p-5">
+      <p className="text-sm font-semibold text-stone-700">Bulk import from CSV</p>
+      <p className="mt-1 text-sm text-stone-500">
+        Adding a whole delivery? Fill the template in Google Sheets or Excel
+        (File → Download → CSV) and upload it here — one row per variant (repeat the model code for multi-variant products).
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={downloadTemplate}
+          className="rounded-xl border border-amber-200 px-4 py-2 text-sm font-semibold text-amber-600 hover:bg-amber-50"
+        >
+          Download template
+        </button>
+        <label className="cursor-pointer rounded-xl border border-amber-200 px-4 py-2 text-sm font-semibold text-amber-600 hover:bg-amber-50">
+          Choose CSV…
+          <input type="file" accept=".csv,text/csv" onChange={onFile} className="hidden" />
+        </label>
+        {fileName && <span className="text-xs text-stone-400">{fileName}</span>}
+      </div>
+      {items && items.length > 0 && (
+        <div className="mt-4">
+          <div className="rounded-xl border border-stone-100">
+            <div className="overflow-x-auto">
+            <table className="min-w-[640px] w-full text-left text-xs">
+              <thead className="bg-stone-50 text-stone-500">
+                <tr>
+                  <th className="px-3 py-2">Code</th>
+                  <th className="px-3 py-2">Name</th>
+                  <th className="px-3 py-2">Price</th>
+                  <th className="px-3 py-2">Units</th>
+                  <th className="px-3 py-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pg.slice.map((it, i) => (
+                  <tr key={i} className="border-t border-stone-100">
+                    <td className="px-3 py-2 font-mono">{it.sku || "—"}</td>
+                    <td className="px-3 py-2">{it.name || "—"}</td>
+                    <td className="px-3 py-2">{it.price ? `K${it.price}` : "—"}</td>
+                    <td className="px-3 py-2">{it.variants.reduce((n, v) => n + v.count, 0)}</td>
+                    <td
+                      className={`px-3 py-2 ${
+                        it.done ? "text-emerald-600" : it.error || it.serverError ? "text-red-600" : "text-stone-500"
+                      }`}
+                    >
+                      {it.done ? "added" : it.error || it.serverError || "ready"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            </div>
+          </div>
+          <Pager page={pg.page} pages={pg.pages} onPage={pg.setPage} />
+          <button
+            type="button"
+            disabled={importing || valid === 0}
+            onClick={importItems}
+            className="mt-3 rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
+          >
+            {importing
+              ? `Importing ${progress}/${items.filter((i) => !i.error && !i.done).length}…`
+              : `Import ${valid} style${valid === 1 ? "" : "s"}`}
+          </button>
+          {valid < items.filter((i) => !i.done).length && (
+            <p className="mt-2 text-xs text-stone-400">{items.filter((i) => !i.done).length - valid} row(s) skipped — fix them in the CSV and re-upload.</p>
+          )}
+        </div>
+      )}
+      {results && (
+        <ul className="mt-3 space-y-1 text-xs">
+          {results.map((r, i) => (
+            <li key={i} className={r.ok ? "text-emerald-600" : "text-red-600"}>
+              {r.model}: {r.ok ? "added" : r.error}
+            </li>
+          ))}
+        </ul>
+      )}
+      {dialog}
+    </div>
+  );
+}
+
+function EditForm({ product, onSaved, onDirty, onCancel }: {
+  product: Product;
+  onSaved: (fields: Partial<Product>) => void;
+  onDirty: (dirty: boolean) => void;
+  onCancel: () => void;
+}) {
+  const { ask, dialog } = useConfirm();
+  const [form, setForm] = useState({
+    name: product.name,
+    brand: product.brand,
+    price: String(priceOf(product)),
+    cat: product.cat,
+    type: product.type,
+    gender: product.gender,
+    condition: product.condition,
+    warranty: product.warranty,
+    img: product.img,
+    desc: product.desc,
+  });
+  const [saving, setSaving] = useState(false);
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = form.name.trim();
+    const price = form.price.trim();
+    if (!name) {
+      toast.error("Name can't be empty");
+      return;
+    }
+    if (!/^\d{1,7}$/.test(price)) {
+      toast.error("Price must be a whole number (0 = ask for price)");
+      return;
+    }
+    if (!(await ask({ title: `Save changes to ${product.name}?`, body: "Updates the live catalogue — shoppers see it within ~a minute.", confirmLabel: "Save" }))) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/product", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sku: product.sku,
+          name: name,
+          brand: form.brand.trim(),
+          price,
+          cat: form.cat,
+          type: form.type.trim(),
+          gender: form.gender.trim(),
+          condition: form.condition.trim(),
+          warranty: form.warranty.trim(),
+          img: form.img.trim(),
+          desc: form.desc.trim(),
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) {
+        toast.error(d.error || "Save failed");
+        return;
+      }
+      onSaved({
+        name,
+        brand: form.brand.trim(),
+        cat: form.cat as CategoryId,
+        type: form.type.trim(),
+        gender: form.gender.trim(),
+        condition: form.condition.trim(),
+        warranty: form.warranty.trim(),
+        img: form.img.trim(),
+        desc: form.desc.trim(),
+        variants: product.variants.map((v) => ({ ...v, price: parseInt(price, 10) || 0 })),
+      });
+      toast.success(`${name || product.sku} saved`);
+    } catch {
+      toast.error("Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Report dirtiness up so the parent's guarded exits (Close, Edit-other,
+  // tab switch) can confirm before unmounting us. Cleanup resets the flag.
+  const dirty =
+    form.name !== product.name || form.brand !== product.brand ||
+    form.price !== String(priceOf(product)) || form.cat !== product.cat ||
+    form.type !== product.type || form.gender !== product.gender ||
+    form.condition !== product.condition || form.warranty !== product.warranty ||
+    form.img !== product.img || form.desc !== product.desc;
+  useEffect(() => {
+    onDirty(dirty);
+    return () => onDirty(false);
+  }, [dirty, onDirty]);
+
+  const input =
+    "w-full rounded-lg border border-amber-100 bg-white px-3 py-2 text-sm outline-none focus:border-amber-300";
+  return (
+    <form onSubmit={save} className="mt-3 grid gap-2 rounded-xl border border-amber-100 bg-amber-50/50 p-3 sm:grid-cols-2">
+      <label className="text-xs font-semibold text-stone-500">
+        Name
+        <input value={form.name} onChange={set("name")} className={input} required />
+      </label>
+      <label className="text-xs font-semibold text-stone-500">
+        Brand
+        <input value={form.brand} onChange={set("brand")} className={input} />
+      </label>
+      <label className="text-xs font-semibold text-stone-500">
+        Price (K — applies to all variants; 0 = ask for price)
+        <input value={form.price} onChange={set("price")} className={input} inputMode="numeric" required />
+      </label>
+      <label className="text-xs font-semibold text-stone-500">
+        Category
+        <select value={form.cat} onChange={set("cat")} className={input}>
+          {CATEGORIES.map((c) => (
+            <option key={c.id} value={c.id}>{c.label}</option>
+          ))}
+        </select>
+      </label>
+      <label className="text-xs font-semibold text-stone-500">
+        Type (e.g. Smartphone, Over-ear, Premium)
+        <input value={form.type} onChange={set("type")} className={input} />
+      </label>
+      <label className="text-xs font-semibold text-stone-500">
+        For (Men / Women / Unisex)
+        <input value={form.gender} onChange={set("gender")} className={input} />
+      </label>
+      <label className="text-xs font-semibold text-stone-500">
+        Condition
+        <input value={form.condition} onChange={set("condition")} className={input} />
+      </label>
+      <label className="text-xs font-semibold text-stone-500">
+        Warranty
+        <input value={form.warranty} onChange={set("warranty")} className={input} />
+      </label>
+      <label className="text-xs font-semibold text-stone-500 sm:col-span-2">
+        Photo (URL or /catalog/… path)
+        <input value={form.img} onChange={set("img")} className={input} />
+      </label>
+      <label className="text-xs font-semibold text-stone-500 sm:col-span-2">
+        Description
+        <textarea value={form.desc} onChange={set("desc")} rows={2} className={input} />
+      </label>
+      <div className="flex gap-2 sm:col-span-2">
+        <button
+          disabled={saving}
+          className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-40"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-lg bg-stone-200 px-4 py-2 text-sm font-semibold text-stone-600 hover:bg-stone-300"
+        >
+          Cancel
+        </button>
+      </div>
+      {dialog}
+    </form>
+  );
+}
+
+
+function Kpi({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
+  return (
+    <div className="rounded-2xl border border-amber-100 bg-white p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">{label}</p>
+      <p className="mt-1 font-display text-2xl font-semibold text-stone-800">{value}</p>
+      {hint && <p className="mt-0.5 text-xs text-stone-400">{hint}</p>}
+    </div>
+  );
+}
+
+function DashboardPanel({ products, analytics, go }: {
+  products: Product[];
+  analytics: ReturnType<typeof useAnalytics>;
+  go: (v: "dashboard" | "stock" | "analytics" | "reports" | "receipts" | "add" | "list") => void | Promise<void>;
+}) {
+  const { data, loading, reload } = analytics;
+  const [days, setDays] = useState(1);
+  const from = new Date(Date.now() - (days - 1) * 864e5).toISOString().slice(0, 10);
+  const rangeLabel = days === 1 ? "today" : `last ${days} days`;
+  const log = data?.log || [];
+  const receipts = data?.receipts || [];
+  const logOk = data ? data.logSupported === true : false;
+  const net = netLogRows(log);
+  const soldR = net.reduce((a, { r, kind, sign }) => (kind === "sold" && dayOf(r.ts) >= from ? a + sign : a), 0);
+  const tapsR = log.filter((r) => r.action === "interest" && dayOf(r.ts) >= from).length;
+  const revR = receipts
+    .filter((r) => dayOf(r.date || "") >= from)
+    .reduce((a, r) => a + (parseInt(String(r.amount).replace(/[^0-9]/g, ""), 10) || 0), 0);
+  const lowStock = products.filter((p) => totalStock(p) > 0 && totalStock(p) <= 5);
+  // Dead stock only makes sense when the log read actually succeeded —
+  // a failed read would mark every stocked style as dead.
+  const soldModels = new Set(log.filter((r) => r.action === "sold").map((r) => r.model));
+  const deadStock = data && data.logSupported !== false
+    ? products.filter((p) => totalStock(p) > 0 && !soldModels.has(p.sku))
+    : [];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-stone-400">Show</span>
+        {[1, 7, 30].map((d) => (
+          <button key={d} onClick={() => setDays(d)} className={`rounded-full border px-3 py-1 text-xs font-semibold ${days === d ? "border-amber-400 bg-amber-50 text-amber-600" : "border-stone-200 bg-white text-stone-500 hover:border-amber-200"}`}>
+            {d === 1 ? "Today" : `${d} days`}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Kpi label="Units in stock" value={products.reduce((a, p) => a + totalStock(p), 0)} hint={`${products.length} products`} />
+        <Kpi label={`Pairs sold — ${rangeLabel}`} value={logOk ? soldR : "—"} hint={logOk ? undefined : "log read failed"} />
+        <Kpi label={`Order taps — ${rangeLabel}`} value={logOk ? tapsR : "—"} hint={logOk ? "WhatsApp orders opened" : "log read failed"} />
+        <Kpi label={`Revenue — ${rangeLabel}`} value={`K${revR}`} hint={data && !data.receiptsSupported ? "redeploy writer for receipts" : undefined} />
+      </div>
+      {data && !data.receiptsSupported && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          Receipt analytics need the latest stock_writer.gs redeployed (kind=receipts). Sales and subscriber data still work.
+        </p>
+      )}
+      {data && (data.logSupported === false || data.subsSupported === false) && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          Some sheet reads failed — figures below may be incomplete. Try Refresh data.
+        </p>
+      )}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-2xl border border-amber-100 bg-white p-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-stone-800">Low stock alerts</h3>
+            <button onClick={() => go("stock")} className="text-xs font-semibold text-amber-500">Open stock →</button>
+          </div>
+          {lowStock.length === 0 ? (
+            <p className="mt-3 text-sm text-stone-400">Nothing running low — every product has 6+ units.</p>
+          ) : (
+            <ul className="mt-3 space-y-1.5">
+              {lowStock.map((p) => (
+                <li key={p.sku} className="flex justify-between rounded-lg bg-amber-50 px-3 py-1.5 text-sm">
+                  <span className="font-semibold text-stone-700">{p.name} <span className="text-stone-400">({p.sku})</span></span>
+                  <span className="font-bold text-amber-600">{totalStock(p)} left</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="rounded-2xl border border-amber-100 bg-white p-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-stone-800">Dead stock</h3>
+            <button onClick={() => go("analytics")} className="text-xs font-semibold text-amber-500">Analytics →</button>
+          </div>
+          {loading ? (
+            <p className="mt-3 text-sm text-stone-400">Loading…</p>
+          ) : !logOk ? (
+            <p className="mt-3 text-sm text-stone-400">Couldn't check — the log read failed. Hit Refresh data.</p>
+          ) : deadStock.length === 0 ? (
+            <p className="mt-3 text-sm text-stone-400">Every stocked style has sold at least once in the log.</p>
+          ) : (
+            <ul className="mt-3 space-y-1.5">
+              {deadStock.map((p) => (
+                <li key={p.sku} className="flex justify-between rounded-lg bg-stone-50 px-3 py-1.5 text-sm">
+                  <span className="font-semibold text-stone-700">{p.name} <span className="text-stone-400">({p.sku})</span></span>
+                  <span className="text-stone-400">no sales logged</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {(["stock", "analytics", "receipts", "add", "list"] as const).map((v) => (
+          <button key={v} onClick={() => go(v)} className="rounded-full border border-amber-200 bg-white px-4 py-1.5 text-sm font-semibold text-stone-600 hover:border-amber-400">
+            {v === "add" ? "add product" : v === "list" ? "mailing list" : v} →
+          </button>
+        ))}
+        <button onClick={reload} className="rounded-full border border-stone-200 bg-white px-4 py-1.5 text-sm font-semibold text-stone-500 hover:border-stone-400">
+          Refresh data
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Bar({ label, value, max, color = "bg-amber-400" }: { label: string; value: number; max: number; color?: string }) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <span className="w-20 shrink-0 truncate text-stone-500">{label}</span>
+      <div className="h-3.5 flex-1 rounded-full bg-stone-100">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${max ? Math.max(2, (value / max) * 100) : 0}%` }} />
+      </div>
+      <span className="w-10 shrink-0 text-right font-semibold text-stone-700">{value}</span>
+    </div>
+  );
+}
+
+function AnalyticsPanel({ analytics, products, stockLive }: { analytics: ReturnType<typeof useAnalytics>; products: Product[]; stockLive: boolean }) {
+  const { data, loading, reload } = analytics;
+  const [range, setRange] = useState(14);
+  if (loading || !data) {
+    return (
+      <div className="rounded-2xl border border-amber-100 bg-white p-6 text-center">
+        <p className="text-sm text-stone-400">{loading ? "Loading analytics…" : "Could not load analytics — check the writer deployment."}</p>
+        {!loading && <button onClick={reload} className="mt-3 rounded-lg bg-amber-500 px-4 py-1.5 text-sm font-semibold text-white">Retry</button>}
+      </div>
+    );
+  }
+  const from = new Date(Date.now() - (range - 1) * 864e5).toISOString().slice(0, 10);
+  // Net over the FULL log, then cut to range — an undo inside the range can
+  // still find its original outside it (both drop out) instead of reading as
+  // a negative sale. Computed once for all three summaries below.
+  const net = netLogRows(data.log).filter(({ r }) => dayOf(r.ts) >= from);
+  const receipts = data.receipts.filter((r) => dayOf(r.date || "") >= from);
+  const subs = data.subscribers.filter((s) => dayOf(s.ts) >= from);
+
+  const perDay = new Map<string, { sold: number; taps: number; rev: number }>();
+  net.forEach(({ r, kind, sign }) => {
+    const d = dayOf(r.ts);
+    const e = perDay.get(d) || { sold: 0, taps: 0, rev: 0 };
+    if (kind === "sold") e.sold += sign;
+    if (kind === "interest") e.taps += 1;
+    perDay.set(d, e);
+  });
+  receipts.forEach((r) => {
+    const d = dayOf(r.date || "");
+    const e = perDay.get(d) || { sold: 0, taps: 0, rev: 0 };
+    e.rev += parseInt(String(r.amount).replace(/[^0-9]/g, ""), 10) || 0;
+    perDay.set(d, e);
+  });
+  const days = Array.from({ length: range }, (_, i) => {
+    const d = new Date(Date.now() - (range - 1 - i) * 864e5).toISOString().slice(0, 10);
+    return { d, ...(perDay.get(d) || { sold: 0, taps: 0, rev: 0 }) };
+  });
+  const maxDay = Math.max(1, ...days.map((x) => Math.max(x.sold, x.taps)));
+  const maxRev = Math.max(1, ...days.map((x) => x.rev));
+  const totalRev = days.reduce((a, x) => a + x.rev, 0);
+
+  // Funnel: order taps → logged sales. Receipts sit beside it as an
+  // independent count — they aren't linked to stock sales (one receipt can
+  // cover several items, or none), so they don't form a conversion stage.
+  const tapsTotal = net.reduce((a, { kind }) => a + (kind === "interest" ? 1 : 0), 0);
+  const soldTotal = net.reduce((a, { kind, sign }) => a + (kind === "sold" ? sign : 0), 0);
+  const paidTotal = receipts.length;
+
+  const soldByModel = new Map<string, number>();
+  const tapsByModel = new Map<string, number>();
+  net.forEach(({ r, kind, sign }) => {
+    if (kind === "sold") soldByModel.set(r.model, (soldByModel.get(r.model) || 0) + sign);
+    if (kind === "interest") tapsByModel.set(r.model, (tapsByModel.get(r.model) || 0) + 1);
+  });
+  const topModels = Array.from(new Set([...soldByModel.keys(), ...tapsByModel.keys()]))
+    .map((m) => ({ m, sold: soldByModel.get(m) || 0, taps: tapsByModel.get(m) || 0 }))
+    .sort((a, b) => b.sold - a.sold || b.taps - a.taps);
+
+  // Sell-through per style: sold in range ÷ (sold + stock on hand now).
+  // Only meaningful against LIVE sheet stock — the fallback catalogue has no
+  // stock for sheet-created styles and would fake 100% sell-outs. SKUs missing
+  // from the map are skipped rather than treated as zero stock.
+  const stockBySku = new Map(products.map((p) => [p.sku, totalStock(p)]));
+  const productBySku = new Map(products.map((p) => [p.sku, p]));
+  const sellThrough = !stockLive ? [] : Array.from(soldByModel.entries())
+    .filter(([m, sold]) => sold > 0 && stockBySku.has(m))
+    .map(([m, sold]) => ({ m, sold, pct: Math.round((sold / Math.max(1, sold + stockBySku.get(m)!)) * 100) }))
+    .sort((a, b) => b.pct - a.pct || b.sold - a.sold)
+    .slice(0, 12);
+  const maxSell = Math.max(1, ...sellThrough.map((x) => x.pct));
+
+  const variantDemand = new Map<string, number>();
+  net.forEach(({ r, kind, sign }) => {
+    const v = r.variant || "?";
+    if (kind === "sold" || kind === "interest") variantDemand.set(v, (variantDemand.get(v) || 0) + sign);
+  });
+  const maxVariant = Math.max(1, ...variantDemand.values());
+  const variantRows = [...variantDemand.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
+
+  const payMix = new Map<string, number>();
+  receipts.forEach((r) => {
+    const m = String(r.method || "—");
+    payMix.set(m, (payMix.get(m) || 0) + (parseInt(String(r.amount).replace(/[^0-9]/g, ""), 10) || 0));
+  });
+  const maxPay = Math.max(1, ...payMix.values());
+
+  // Repeat customers count across ALL receipts (a repeat buyer's first
+  // purchase may predate the selected range); only those with a purchase
+  // inside the range are listed, so out-of-range-only buyers don't appear.
+  const byPhone = new Map<string, { name: string; count: number; inRange: boolean; total: number }>();
+  data.receipts.forEach((r) => {
+    const ph = String(r.phone || "").replace(/[^0-9+]/g, "");
+    if (!ph) return;
+    const e = byPhone.get(ph) || { name: String(r.client || ""), count: 0, inRange: false, total: 0 };
+    e.count += 1;
+    if (dayOf(r.date || "") >= from) {
+      e.inRange = true;
+      e.total += parseInt(String(r.amount).replace(/[^0-9]/g, ""), 10) || 0;
+    }
+    byPhone.set(ph, e);
+  });
+  const repeaters = Array.from(byPhone.entries()).filter(([, v]) => v.count > 1 && v.inRange).sort((a, b) => b[1].total - a[1].total);
+
+  const heardMix = new Map<string, number>();
+  const tapsArea = new Map<string, number>();
+  net.forEach(({ r }) => {
+    const note = String(r.note || "");
+    // Notes are built as `qty N · via X · in Y [· for NAME · tel PHONE]` — each
+    // segment stops at the next `·` so a later segment can't bleed into the capture.
+    const h = /(?:^| · )via ([^·]+?)\s*(?:·|$)/i.exec(note);
+    if (h) heardMix.set(h[1].trim(), (heardMix.get(h[1].trim()) || 0) + 1);
+    const loc = / · in ([^·]+?)\s*(?:·|$)/.exec(note);
+    if (loc) tapsArea.set(loc[1].trim(), (tapsArea.get(loc[1].trim()) || 0) + 1);
+  });
+  receipts.forEach((r) => {
+    const h = String(r.heard || "").trim();
+    if (h) heardMix.set(h, (heardMix.get(h) || 0) + 1);
+  });
+  const maxHeard = Math.max(1, ...heardMix.values());
+
+  const areaMix = new Map<string, number>();
+  receipts.forEach((r) => {
+    const a = String(r.area || "").trim();
+    if (a) areaMix.set(a, (areaMix.get(a) || 0) + 1);
+  });
+  const maxArea = Math.max(1, ...areaMix.values());
+  const maxTapsArea = Math.max(1, ...tapsArea.values());
+
+  const subsByDay = new Map<string, number>();
+  subs.forEach((s) => subsByDay.set(dayOf(s.ts), (subsByDay.get(dayOf(s.ts)) || 0) + 1));
+  const maxSubs = Math.max(1, ...subsByDay.values());
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="font-semibold text-stone-800">Analytics</h2>
+        {[7, 14, 30].map((d) => (
+          <button key={d} onClick={() => setRange(d)} className={`rounded-full px-3 py-1 text-xs font-semibold ${range === d ? "bg-amber-500 text-white" : "bg-stone-100 text-stone-600"}`}>
+            {d}d
+          </button>
+        ))}
+        <button onClick={reload} className="ml-auto rounded-lg border border-stone-200 px-3 py-1 text-xs font-semibold text-stone-500">Refresh</button>
+      </div>
+      {!data.receiptsSupported && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          Receipt revenue/mix/areas need the latest stock_writer.gs redeployed (kind=receipts). Log + subscriber analytics work now.
+        </p>
+      )}
+      {(data.logSupported === false || data.subsSupported === false) && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          Some sheet reads failed — figures below may be incomplete. Try Refresh.
+        </p>
+      )}
+      <div className="rounded-2xl border border-amber-100 bg-white p-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-stone-800">Sales trend — sold vs order taps per day {totalRev > 0 && <span className="font-normal text-stone-400">· K{totalRev.toLocaleString()} revenue</span>}</h3>
+          <button onClick={() => downloadCsv(`baron-daily-${range}d.csv`, ["date", "sold", "order taps", "revenue K"], days.map((x) => [x.d, x.sold, x.taps, x.rev]))} className="text-xs font-semibold text-amber-500">Export CSV</button>
+        </div>
+        <div className="mt-3 space-y-1">
+          {days.map((x) => (
+            <div key={x.d} className="flex items-center gap-2 text-xs">
+              <span className="w-16 shrink-0 text-stone-400">{x.d.slice(5)}</span>
+              <div className="flex h-4 flex-1 gap-0.5">
+                <div className="rounded bg-amber-400" style={{ width: `${(x.sold / maxDay) * 40}%` }} title={`${x.sold} sold`} />
+                <div className="rounded bg-stone-300" style={{ width: `${(x.taps / maxDay) * 40}%` }} title={`${x.taps} taps`} />
+                <div className="rounded bg-emerald-400" style={{ width: `${(x.rev / maxRev) * 20}%` }} title={`K${x.rev} revenue`} />
+              </div>
+              <span className="w-24 shrink-0 text-right text-stone-500">{x.sold} / {x.taps}{x.rev ? ` · K${x.rev}` : ""}</span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-stone-400"><span className="inline-block h-2 w-2 rounded bg-amber-400" /> sold · <span className="inline-block h-2 w-2 rounded bg-stone-300" /> order taps · <span className="inline-block h-2 w-2 rounded bg-emerald-400" /> revenue (own scale)</p>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-2xl border border-amber-100 bg-white p-4">
+          <h3 className="font-semibold text-stone-800">Demand funnel — taps → sales</h3>
+          <div className="mt-3 space-y-2">
+            {[
+              { label: "Order taps", n: tapsTotal, pct: 100 },
+              { label: "Sales logged", n: soldTotal, pct: tapsTotal ? Math.round((soldTotal / tapsTotal) * 100) : 0 },
+            ].map((s) => (
+              <div key={s.label} className="flex items-center gap-3 text-sm">
+                <span className="w-28 shrink-0 text-stone-500">{s.label}</span>
+                <div className="h-5 flex-1 rounded bg-stone-100">
+                  <div className="h-5 rounded bg-amber-400" style={{ width: `${Math.min(100, s.pct)}%` }} />
+                </div>
+                <span className="w-16 shrink-0 text-right font-semibold text-stone-700">{s.n} <span className="font-normal text-stone-400">{s.pct}%</span></span>
+              </div>
+            ))}
+            <div className="flex items-center gap-3 text-sm">
+              <span className="w-28 shrink-0 text-stone-500">Receipts written</span>
+              <div className="h-5 flex-1 rounded bg-stone-100">
+                <div className="h-5 rounded bg-emerald-400" style={{ width: `${Math.min(100, (paidTotal / Math.max(1, tapsTotal)) * 100)}%` }} />
+              </div>
+              <span className="w-16 shrink-0 text-right font-semibold text-stone-700">{paidTotal} <span className="font-normal text-stone-400">K{totalRev.toLocaleString()}</span></span>
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-stone-400">Sales as % of taps. Receipts are written independently of stock sales (one receipt can cover several items), so they're counted separately — see leads for open demand.</p>
+        </div>
+        <div className="rounded-2xl border border-amber-100 bg-white p-4">
+          <h3 className="font-semibold text-stone-800">Sell-through — % of stock sold</h3>
+          <div className="mt-3 space-y-1">
+            {sellThrough.map((x) => {
+              const p = productBySku.get(x.m);
+              return <Bar key={x.m} label={p ? `${p.name} · ${p.brand}` : x.m} value={x.pct} max={maxSell} color="bg-emerald-400" />;
+            })}
+            {!sellThrough.length && <p className="text-sm text-stone-400">{stockLive ? "No sales in range" : "Needs live stock — catalogue is on fallback"}</p>}
+          </div>
+          <p className="mt-2 text-xs text-stone-400">sold ÷ (sold + stock on hand) in range — high % products are selling out.</p>
+        </div>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <TopModelsTable rows={topModels} range={range} products={products} />
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-amber-100 bg-white p-4">
+            <h3 className="font-semibold text-stone-800">Variant demand (sold + taps)</h3>
+            <div className="mt-3 space-y-1">
+              {variantRows.map(([v, n]) => (
+                <Bar key={v} label={v} value={n} max={maxVariant} />
+              ))}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-amber-100 bg-white p-4">
+            <h3 className="font-semibold text-stone-800">Subscriber growth ({data.subscribers.length} total)</h3>
+            <div className="mt-3 space-y-1">
+              {Array.from(subsByDay.entries()).sort().map(([d, n]) => (
+                <Bar key={d} label={d.slice(5)} value={n} max={maxSubs} color="bg-emerald-400" />
+              ))}
+              {!subsByDay.size && <p className="text-sm text-stone-400">No signups in range</p>}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-3">
+        <div className="rounded-2xl border border-amber-100 bg-white p-4">
+          <h3 className="font-semibold text-stone-800">Payment mix (K)</h3>
+          <div className="mt-3 space-y-1">
+            {Array.from(payMix.entries()).sort((a, b) => b[1] - a[1]).map(([m, v]) => (
+              <Bar key={m} label={m} value={v} max={maxPay} color="bg-violet-400" />
+            ))}
+            {!payMix.size && <p className="text-sm text-stone-400">No receipts in range</p>}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-amber-100 bg-white p-4">
+          <h3 className="font-semibold text-stone-800">Referral source</h3>
+          <div className="mt-3 space-y-1">
+            {Array.from(heardMix.entries()).sort((a, b) => b[1] - a[1]).map(([h, n]) => (
+              <Bar key={h} label={h} value={n} max={maxHeard} color="bg-sky-400" />
+            ))}
+            {!heardMix.size && <p className="text-sm text-stone-400">None captured yet — appears once clients pick a source at checkout</p>}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-amber-100 bg-white p-4">
+          <h3 className="font-semibold text-stone-800">Areas</h3>
+          <p className="mt-0.5 text-xs text-stone-400">Where clients order from — paid sales (receipts) and interest taps (checkout location)</p>
+          <div className="mt-3 space-y-1">
+            {Array.from(areaMix.entries()).sort((a, b) => b[1] - a[1]).map(([a, n]) => (
+              <Bar key={a} label={`${a} · sold`} value={n} max={maxArea} color="bg-amber-400" />
+            ))}
+            {Array.from(tapsArea.entries()).sort((a, b) => b[1] - a[1]).map(([a, n]) => (
+              <Bar key={`t-${a}`} label={`${a} · taps`} value={n} max={maxTapsArea} color="bg-amber-400" />
+            ))}
+            {!areaMix.size && !tapsArea.size && <p className="text-sm text-stone-400">Fill the Area field on receipts — checkout locations join automatically</p>}
+          </div>
+        </div>
+      </div>
+      <RepeatersTable repeaters={repeaters} />
+    </div>
+  );
+}
+
+function TopModelsTable({ rows, range, products }: { rows: { m: string; sold: number; taps: number }[]; range: number; products: Product[] }) {
+  const pg = usePager(rows, 10);
+  const bySku = new Map(products.map((p) => [p.sku, p]));
+  return (
+    <div className="rounded-2xl border border-amber-100 bg-white p-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-stone-800">Top models — sold vs interest</h3>
+        <button onClick={() => downloadCsv(`baron-models-${range}d.csv`, ["model", "name", "brand", "sold", "order taps"], rows.map((t) => { const p = bySku.get(t.m); return [t.m, p?.name || "", p?.brand || "", t.sold, t.taps]; }))} className="text-xs font-semibold text-amber-500">CSV</button>
+      </div>
+      <div className="overflow-x-auto">
+      <table className="min-w-[460px] mt-3 w-full text-sm">
+        <tbody>
+          {pg.slice.map((t) => (
+            <tr key={t.m} className="border-t border-amber-50">
+              <td className="py-1.5 font-semibold text-stone-700">{(() => { const p = bySku.get(t.m); return p ? `${p.name} · ${p.brand}` : t.m; })()} <span className="font-normal text-xs text-stone-400">{t.m}</span></td>
+              <td className="py-1.5 text-right">{t.sold}</td>
+              <td className="py-1.5 text-right text-stone-400">{t.taps}</td>
+            </tr>
+          ))}
+          {!rows.length && <tr><td className="py-4 text-center text-stone-400">No activity in range</td></tr>}
+        </tbody>
+      </table>
+      </div>
+      <Pager page={pg.page} pages={pg.pages} onPage={pg.setPage} />
+    </div>
+  );
+}
+
+function RepeatersTable({ repeaters }: { repeaters: [string, { name: string; count: number; total: number }][] }) {
+  const pg = usePager(repeaters, 10);
+  return (
+    <div className="rounded-2xl border border-amber-100 bg-white p-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-stone-800">Repeat customers ({repeaters.length})</h3>
+        <button onClick={() => downloadCsv("baron-repeat-customers.csv", ["phone", "name", "receipts", "total K"], repeaters.map(([ph, v]) => [ph, v.name, v.count, v.total]))} className="text-xs font-semibold text-amber-500">CSV</button>
+      </div>
+      <div className="overflow-x-auto">
+      <table className="min-w-[480px] mt-3 w-full text-sm">
+        <tbody>
+          {pg.slice.map(([ph, v]) => (
+            <tr key={ph} className="border-t border-amber-50">
+              <td className="py-1.5 font-semibold text-stone-700">{v.name}</td>
+              <td className="py-1.5 text-stone-400">{ph}</td>
+              <td className="py-1.5 text-right">{v.count} receipts</td>
+              <td className="py-1.5 text-right font-semibold">K{v.total}</td>
+            </tr>
+          ))}
+          {!repeaters.length && <tr><td className="py-4 text-center text-stone-400">No repeat customers yet (matched by phone)</td></tr>}
+        </tbody>
+      </table>
+      </div>
+      <Pager page={pg.page} pages={pg.pages} onPage={pg.setPage} />
+    </div>
+  );
+}
+
+type Lead = { model: string; size: string; taps: number; lastTs: string; who?: string; phone?: string }; // size = variant label
+
+// Order taps that never became a sale — unfilled demand to follow up on
+// or restock. Matches each lead to its product for name + stock status.
+function LeadsPanel({ products }: { products: Product[] }) {
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
+  const [show, setShow] = useState<"all" | "stocked" | "restock">("all");
+
+  const load = async () => {
+    setState("loading");
+    try {
+      const res = await fetch("/api/admin/leads", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        setState("failed");
+        return;
+      }
+      const list = (data.leads || []) as Lead[];
+      list.sort((a, b) => b.taps - a.taps || String(b.lastTs).localeCompare(String(a.lastTs)));
+      setLeads(list);
+      setState("ready");
+    } catch {
+      setState("failed");
+    }
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, []);
+
+  const productBySku = useMemo(() => new Map(products.map((p) => [p.sku, p])), [products]);
+  const rows = leads.map((l) => {
+    const p = productBySku.get(l.model);
+    const inStock = p ? p.variants.some((v) => v.label === l.size && v.stock > 0) : false;
+    return { l, p, inStock };
+  });
+  const shown = rows.filter((r) => (show === "all" ? true : show === "stocked" ? r.inStock : !r.inStock));
+  const pg = usePager(shown, 15);
+
+  return (
+    <div className="rounded-2xl border border-amber-100 bg-white p-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 className="font-semibold text-stone-800">Order taps without a sale</h2>
+        {state === "ready" && (
+          <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-600">
+            {shown.length} open {shown.length === 1 ? "lead" : "leads"}
+          </span>
+        )}
+        {(["all", "stocked", "restock"] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setShow(f)}
+            className={`rounded-full border px-3 py-1 text-xs font-semibold ${show === f ? "border-amber-400 bg-amber-50 text-amber-600" : "border-stone-200 bg-white text-stone-500 hover:border-amber-200"}`}
+          >
+            {f === "all" ? "All" : f === "stocked" ? "In stock" : "Needs restock"}
+          </button>
+        ))}
+        <button
+          onClick={() =>
+            downloadCsv(
+              "leads.csv",
+              ["model", "variant", "taps", "last tap", "name", "phone"],
+              shown.map((r) => [r.l.model, r.l.size, r.l.taps, r.l.lastTs, r.l.who || "", r.l.phone || ""])
+            )
+          }
+          disabled={!shown.length}
+          className="ml-auto rounded-lg bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-600 hover:bg-stone-200 disabled:opacity-40"
+        >
+          Export CSV
+        </button>
+      </div>
+      <p className="mt-1 text-xs text-stone-400">
+        A tap counts as filled once the same style+size is later marked sold — these are the open ones. Contact shown when the client consented to follow-up.
+      </p>
+      {state === "loading" ? (
+        <p className="mt-4 text-sm text-stone-400">Loading…</p>
+      ) : state === "failed" ? (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+          Couldn&apos;t load leads — the writer needs the latest stock_writer.gs (kind=leads).
+          <button onClick={load} className="ml-2 font-semibold underline">Retry</button>
+        </div>
+      ) : shown.length === 0 ? (
+        <p className="mt-4 text-sm text-stone-400">{leads.length === 0 ? "No open leads — every order tap so far became a sale." : "No leads in this filter."}</p>
+      ) : (
+        <div className="overflow-x-auto">
+        <table className="min-w-[620px] mt-3 w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs uppercase tracking-wide text-stone-400">
+              <th className="pb-1">Style</th><th className="pb-1">Size</th><th className="pb-1">Contact</th><th className="pb-1 text-right">Taps</th>
+              <th className="pb-1 text-right">Last tap</th><th className="pb-1 text-right">Stock</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pg.slice.map((r) => (
+              <tr key={`${r.l.model}-${r.l.size}`} className="border-t border-amber-50">
+                <td className="py-1.5 font-semibold text-stone-700">{r.p?.name || r.l.model} <span className="font-normal text-stone-400">{r.l.model}</span></td>
+                <td className="py-1.5 text-stone-500">{r.l.size || "—"}</td>
+                <td className="py-1.5">
+                  {r.l.phone ? (
+                    <a
+                      className="font-semibold text-emerald-600 underline decoration-emerald-300 underline-offset-2 hover:text-emerald-700"
+                      href={`https://wa.me/${waNumber(r.l.phone)}?text=${encodeURIComponent(
+                        `Hi${r.l.who ? ` ${r.l.who}` : ""}! This is The Baron — you asked about the ${r.p?.name || "item"}${r.l.size ? ` (${r.l.size})` : ""}. ` +
+                        (r.inStock
+                          ? "It's in stock, can I set it aside for you?"
+                          : "It's out of stock right now — should I let you know as soon as it's back?")
+                      )}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {r.l.who || "Client"} · {r.l.phone}
+                    </a>
+                  ) : (
+                    <span className="text-stone-400">anonymous tap</span>
+                  )}
+                </td>
+                <td className="py-1.5 text-right font-semibold text-amber-500">{r.l.taps}</td>
+                <td className="py-1.5 text-right text-stone-400">{String(r.l.lastTs).slice(0, 10)}</td>
+                <td className="py-1.5 text-right">
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${r.inStock ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`}>
+                    {r.inStock ? "in stock — follow up" : "sold out — restock"}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        </div>
+      )}
+      <Pager page={pg.page} pages={pg.pages} onPage={pg.setPage} />
+    </div>
+  );
+}
+
+// Compose + send a newsletter to every subscriber. The template wraps the
+// message + featured styles in the brand frame; the writer sends via MailApp
+// and reports sent/failed/remaining (Gmail caps ~100 recipients/day).
+function NewsletterPanel({ products }: { products: Product[] }) {
+  const { ask, dialog } = useConfirm();
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [picked, setPicked] = useState<string[]>([]);
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<{ total: number; sent: number; failed: number; remaining: number } | null>(null);
+
+  const inStock = products.filter((p) => totalStock(p) > 0);
+  const featured = picked.map((sku) => products.find((p) => p.sku === sku)).filter(Boolean) as Product[];
+  const toggle = (sku: string) =>
+    setPicked((s) => (s.includes(sku) ? s.filter((x) => x !== sku) : s.length >= 4 ? s : [...s, sku]));
+
+  const site = typeof window === "undefined" ? "" : window.location.origin;
+  const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // Attribute values also need quotes escaped — a crafted product URL could
+  // otherwise break out of src="…" into new attributes.
+  const escAttr = (s: string) => escHtml(s).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  // Sheet photos can be relative (/products/…) or absolute — don't prefix
+  // absolute URLs with the site origin.
+  const abs = (u: string) => (/^https?:\/\//i.test(u) ? u : site + u);
+  const paragraphs = message.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const html = `<!doctype html><html><body style="margin:0;background:#faf8f3;font-family:Georgia,serif;color:#44403c">
+<div style="max-width:560px;margin:0 auto;padding:24px">
+  <div style="text-align:center">
+    <img src="${site}/brand/crest.png" alt="The Baron" width="72" style="border-radius:16px"/>
+    <h1 style="font-size:22px;color:#c9a24a;margin:8px 0 0">The Baron</h1>
+  </div>
+  <div style="background:#ffffff;border:1px solid #ffe4e6;border-radius:16px;padding:20px;margin-top:16px">
+    ${subject ? `<h2 style="margin:0 0 12px;font-size:18px;color:#1c1917">${escHtml(subject)}</h2>` : ""}
+    ${paragraphs.map((p) => `<p style="font-size:14px;line-height:1.6;margin:0 0 10px">${escHtml(p).replace(/\n/g, "<br/>")}</p>`).join("")}
+    ${featured.length ? `<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px"><tr>${featured.map((p) => `<td align="center" style="padding:4px"><img src="${escAttr(abs(p.img))}" alt="${escAttr(p.name)}" width="120" style="border-radius:12px;display:block"/><div style="font-size:12px;margin-top:6px">${escHtml(p.name)}</div><div style="font-size:12px;font-weight:bold;color:#c9a24a">K${priceOf(p)}</div></td>`).join("")}</tr></table>` : ""}
+    <p style="text-align:center;margin:20px 0 0"><a href="${site}" style="background:#8a6a22;color:#fff;padding:10px 24px;border-radius:999px;text-decoration:none;font-size:14px;font-weight:bold">Shop the collection</a></p>
+  </div>
+  <p style="text-align:center;font-size:11px;color:#a8a29e;margin-top:16px">
+    The Baron · Lusaka · You&apos;re getting this because you joined the Baron List.<br/>
+    Reply STOP to unsubscribe, or order on WhatsApp +260 974 128 784.
+  </p>
+</div></body></html>`;
+  const text = [
+    "PETAL STEPS" + (subject ? " — " + subject : ""),
+    ...paragraphs,
+    featured.map((p) => `· ${p.name} — K${priceOf(p)}`).join("\n"),
+    "Shop: " + site,
+    "WhatsApp orders: +260 760 732 751",
+    "Reply STOP to unsubscribe.",
+  ].filter((s) => s !== "").join("\n\n");
+
+  const send = async () => {
+    if (!subject.trim() || !message.trim()) {
+      toast.error("Subject and message are required");
+      return;
+    }
+    if (!(await ask({ title: "Send to ALL subscribers now?", body: "Every active Baron List subscriber gets this email. It can't be undone.", confirmLabel: "Send newsletter" }))) return;
+    setSending(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/admin/newsletter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject, html, text }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        toast.error(data.error || "Send failed");
+        return;
+      }
+      setResult({ total: data.total, sent: data.sent, failed: data.failed, remaining: data.remaining });
+      toast.success(`Sent to ${data.sent} subscriber${data.sent === 1 ? "" : "s"}`);
+    } catch {
+      toast.error("Send failed — network error");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-amber-100 bg-white p-4">
+        <h2 className="font-semibold text-stone-800">Newsletter</h2>
+        <p className="mt-1 text-xs text-stone-400">
+          Goes to every Baron List subscriber. Gmail sends ~100/day — if the list is bigger the rest go tomorrow (rerun the send).
+        </p>
+        <input
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          placeholder="Subject — e.g. New arrivals just landed"
+          aria-label="Newsletter subject"
+          className={`${inputCls} mt-3`}
+        />
+        <textarea
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          placeholder={"Write the message…\n\nBlank lines split paragraphs. Keep it short and warm."}
+          aria-label="Newsletter message"
+          rows={6}
+          className={`${inputCls} mt-2 resize-y`}
+        />
+        <p className="mt-3 text-xs font-semibold text-stone-500">Feature up to 4 in-stock products (tap to add):</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {inStock.slice(0, 24).map((p) => (
+            <button
+              key={p.sku}
+              onClick={() => toggle(p.sku)}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                picked.includes(p.sku)
+                  ? "border-amber-400 bg-amber-50 text-amber-600"
+                  : "border-stone-200 bg-white text-stone-500 hover:border-amber-200"
+              }`}
+            >
+              {p.name}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={send}
+          disabled={sending}
+          className="mt-4 rounded-lg bg-amber-500 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
+        >
+          {sending ? "Sending…" : "Send to all subscribers"}
+        </button>
+        {result && (
+          <p className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {result.sent} sent{result.failed ? ` · ${result.failed} failed` : ""}
+            {result.remaining ? ` · ${result.remaining} left for tomorrow (Gmail daily quota)` : ""}
+            {" · "}list total {result.total}
+          </p>
+        )}
+      </div>
+      <div className="rounded-2xl border border-amber-100 bg-white p-4">
+        <h3 className="text-sm font-semibold text-stone-600">Preview</h3>
+        <iframe title="Newsletter preview" sandbox="" srcDoc={html} className="mt-2 h-[480px] w-full rounded-xl border border-stone-100" />
+      </div>
+      {dialog}
+    </div>
+  );
+}
+
+export default function AdminPage() {
+  const { ask, dialog } = useConfirm();
+  const [state, setState] = useState<"loading" | "login" | "ready">("loading");
+  const [configured, setConfigured] = useState(true);
+  const [source, setSource] = useState<string>("");
+  const [products, setProducts] = useState<Product[]>([]);
+  const [passcode, setPasscode] = useState("");
+  const [busyKey, setBusyKey] = useState("");
+  const [editing, setEditing] = useState("");
+  const [editDirty, setEditDirty] = useState(false);
+  const [stockFilter, setStockFilter] = useState<"all" | "low" | "out" | CategoryId>("all");
+  const [view, setView] = useState<"dashboard" | "stock" | "analytics" | "reports" | "receipts" | "add" | "list" | "newsletter" | "leads">("dashboard");
+  const analytics = useAnalytics();
+
+  const loadProducts = useCallback(async () => {
+    const res = await fetch("/api/products?all=1", { cache: "no-store" });
+    const data = await res.json();
+    setProducts(data.products || []);
+    setSource(data.source || "");
+  }, []);
+
+  // The admin is always light-themed — drop any saved dark preference.
+  useEffect(() => { document.documentElement.classList.remove("dark"); }, []);
+
+  useEffect(() => {
+    (async () => {
+      const res = await fetch("/api/admin/session", { cache: "no-store" });
+      const s = await res.json();
+      setConfigured(s.configured);
+      if (s.authed) {
+        await loadProducts();
+        setState("ready");
+      } else setState("login");
+    })();
+  }, [loadProducts]);
+
+  const login = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = await fetch("/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ passcode }),
+    });
+    if (res.ok) {
+      await loadProducts();
+      setState("ready");
+    } else {
+      const d = await res.json().catch(() => ({}));
+      toast.error(d.error || "Login failed");
+    }
+  };
+
+  // Every path that can drop an open editor's unsaved state — Cancel, the
+  // row's Close button, opening another product, or switching tabs — funnels
+  // through here so the discard confirm fires exactly once.
+  const discardEdits = () =>
+    ask({ title: "Discard your edits?", body: "Your product changes haven't been saved yet.", confirmLabel: "Discard" });
+  const closeEditor = async (next = "") => {
+    if (editDirty && !(await discardEdits())) return false;
+    setEditing(next);
+    return true;
+  };
+  const goView = async (v: typeof view) => {
+    if (view === v) return;
+    if (!(await closeEditor(""))) return;
+    setView(v);
+  };
+
+  const logout = async () => {
+    if (!(await ask({ title: "Log out of admin?", confirmLabel: "Log out" }))) return;
+    await fetch("/api/admin/logout", { method: "POST" });
+    setState("login");
+  };
+
+  const adjust = async (p: Product, variant: string, delta: number, undo = false) => {
+    const cur = p.variants.find((v) => v.label === variant)?.stock ?? 0;
+    const ok = await ask(
+      undo
+        ? { title: `Undo the last change on ${p.name} ${variant}?`, confirmLabel: "Undo" }
+        : delta < 0
+          ? { title: `Mark one ${p.name} ${variant} as sold?`, body: `Stock goes from ${cur} to ${cur - 1}.`, confirmLabel: "Mark sold" }
+          : { title: `Restock one ${p.name} ${variant}?`, body: `Stock goes from ${cur} to ${cur + 1}.`, confirmLabel: "Restock" }
+    );
+    if (!ok) return;
+    const key = `${p.sku}-${variant}`;
+    setBusyKey(key);
+    try {
+      const res = await fetch("/api/admin/sold", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sku: p.sku, variant, delta, undo }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) {
+        toast.error(d.error || "Update failed");
+        return;
+      }
+      setProducts((ps) =>
+        ps.map((q) =>
+          q.sku !== p.sku
+            ? q
+            : {
+                ...q,
+                variants: q.variants.map((v) =>
+                  v.label === variant ? { ...v, stock: d.count } : v
+                ),
+              }
+        )
+      );
+      // No Undo offered on an undo write — undo-of-undo can't be
+      // expressed in the log and would corrupt the net counts.
+      toast.success(`${p.name} ${variant}: ${d.previous} → ${d.count}`,
+        undo ? undefined : { action: { label: "Undo", onClick: () => adjust(p, variant, -delta, true) } });
+    } catch {
+      toast.error("Update failed");
+    } finally {
+      setBusyKey("");
+    }
+  };
+
+  const stockShown = products.filter((p) => {
+    const tp = totalStock(p);
+    if (stockFilter === "low") return tp > 0 && tp <= 5;
+    if (stockFilter === "out") return tp === 0;
+    if (stockFilter === "all") return true;
+    return p.cat === stockFilter;
+  });
+  const stockPg = usePager(stockShown, 10);
+
+  // Page/filter changes can unmount an open EditForm — funnel them through
+  // the same discard confirm as closeEditor before they take effect.
+  const goStockPage = async (p: number) => {
+    if (p === stockPg.page) return;
+    if (await closeEditor()) stockPg.setPage(p);
+  };
+  const goStockFilter = async (f: typeof stockFilter) => {
+    if (f === stockFilter) return;
+    if (await closeEditor()) setStockFilter(f);
+  };
+
+  if (state === "loading") {
+    return <main id="main" tabIndex={-1} className="mx-auto w-[min(720px,92%)] py-16 text-center text-stone-500">Loading…</main>;
+  }
+
+  if (!configured) {
+    return (
+      <main id="main" tabIndex={-1} className="mx-auto w-[min(720px,92%)] py-16 text-center">
+        <h1 className="text-2xl font-bold text-stone-800">Admin not configured</h1>
+        <p className="mt-3 text-stone-500">
+          Set <code>ADMIN_PASSCODE</code>, <code>STOCK_WRITER_URL</code> and{" "}
+          <code>STOCK_WRITER_TOKEN</code> in the environment, then redeploy.
+        </p>
+      </main>
+    );
+  }
+
+  if (state === "login") {
+    return (
+      <main id="main" tabIndex={-1} className="mx-auto w-[min(420px,92%)] py-16">
+        <Image src="/brand/crest.png" alt="The Baron" width={1013} height={552} className="h-16 w-auto" />
+        <h1 className="mt-3 font-display text-3xl text-amber-500">Stock admin</h1>
+        <p className="mt-1 text-sm text-stone-500">Sign in to mark units sold or restock.</p>
+        <form onSubmit={login} className="mt-6 flex gap-2">
+          <input
+            type="password"
+            value={passcode}
+            onChange={(e) => setPasscode(e.target.value)}
+            placeholder="Passcode"
+            aria-label="Admin passcode"
+            autoComplete="current-password"
+            className="flex-1 rounded-xl border border-amber-100 bg-white px-4 py-3 text-sm outline-none focus:border-amber-300"
+            autoFocus
+          />
+          <button className="rounded-xl bg-amber-500 px-5 py-3 text-sm font-semibold text-white hover:bg-amber-600">
+            Sign in
+          </button>
+        </form>
+      </main>
+    );
+  }
+
+  return (
+    <main id="main" tabIndex={-1} className="mx-auto w-[min(1180px,94%)] py-8">
+      <div className="flex items-center gap-3">
+        <Image src="/brand/crest.png" alt="The Baron" width={1080} height={1080} className="h-10 w-10 rounded-full" />
+        <h1 className="font-display text-3xl text-amber-500">Stock admin</h1>
+        <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-600">
+          {products.length} products · {products.reduce((a, p) => a + totalStock(p), 0)} units ·{" "}
+          {source === "sheet" ? "live sheet" : "fallback catalogue"}
+        </span>
+        <button onClick={logout} className="ml-auto text-sm font-semibold text-stone-500 hover:text-amber-500">
+          Sign out
+        </button>
+      </div>
+      <nav className="mt-4 flex flex-wrap gap-2">
+        {(["dashboard", "stock", "analytics", "add", "reports", "receipts", "list", "newsletter", "leads"] as const).map((v) => (
+          <button
+            key={v}
+            onClick={() => goView(v)}
+            className={`rounded-full px-4 py-1.5 text-sm font-semibold capitalize ${
+              view === v ? "bg-amber-500 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+            }`}
+          >
+            {v === "add" ? "add product" : v === "list" ? "mailing list" : v}
+          </button>
+        ))}
+      </nav>
+      {view === "dashboard" && (
+        <div className="mt-6"><DashboardPanel products={products} analytics={analytics} go={goView} /></div>
+      )}
+      {view === "analytics" && (
+        <div className="mt-6"><AnalyticsPanel analytics={analytics} products={products} stockLive={source === "sheet"} /></div>
+      )}
+      {view === "add" && (
+        <div className="mt-6">
+          <AddStylePanel
+            onCreated={async () => {
+              await loadProducts();
+              setEditing("");
+              setView("stock");
+            }}
+          />
+          <div className="mt-4">
+            <BulkImport
+              onDone={async () => {
+                await loadProducts();
+                setEditing("");
+                setView("stock");
+              }}
+            />
+          </div>
+        </div>
+      )}
+      {view === "reports" && <div className="mt-6"><ReportsPanel products={products} /></div>}
+      {view === "receipts" && <div className="mt-6"><ReceiptPanel products={products} /></div>}
+      {view === "list" && <div className="mt-6"><SubscribersPanel /></div>}
+      {view === "newsletter" && <div className="mt-6"><NewsletterPanel products={products} /></div>}
+      {view === "leads" && <div className="mt-6"><LeadsPanel products={products} /></div>}
+      {source !== "sheet" && view === "stock" && (
+        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          The shop is on the fallback catalogue — stock writes still go to the sheet, but the site
+          won't reflect them until PRODUCTS_SHEET_CSV_URL works again.
+        </p>
+      )}
+      {view === "stock" && <div className="mt-6 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {([
+            ["all", `All (${products.length})`],
+            ["low", "Low stock"],
+            ["out", "Sold out"],
+            ...CATEGORIES.map((c): [CategoryId, string] => [c.id, c.label]),
+          ] as const).map(([f, label]) => (
+            <button
+              key={f}
+              onClick={() => void goStockFilter(f)}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${stockFilter === f ? "border-amber-400 bg-amber-50 text-amber-600" : "border-stone-200 bg-white text-stone-500 hover:border-amber-200"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {stockPg.slice.map((p) => (
+          <section key={p.sku} className="rounded-2xl border border-amber-100 bg-white p-4">
+            <div className="flex items-center gap-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={p.img}
+                alt={p.name}
+                className="h-16 w-16 shrink-0 rounded-xl border border-amber-100 object-cover"
+              />
+              <div className="flex flex-wrap items-baseline gap-x-3">
+                <h2 className="font-semibold text-stone-800">{p.name}</h2>
+                <span className="text-xs text-stone-400">
+                  {p.sku} · {p.brand} · K{priceOf(p)}
+                </span>
+              </div>
+              <button
+                onClick={() => void closeEditor(editing === p.sku ? "" : p.sku)}
+                className="ml-auto rounded-lg bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-600 hover:bg-stone-200"
+              >
+                {editing === p.sku ? "Close" : "Edit"}
+              </button>
+            </div>
+            {editing === p.sku && (
+              <EditForm
+                product={p}
+                onCancel={() => void closeEditor("")}
+                onDirty={setEditDirty}
+                onSaved={(fields) => {
+                  setProducts((ps) =>
+                    ps.map((q) => (q.sku === p.sku ? { ...q, ...fields } : q))
+                  );
+                  setEditing("");
+                }}
+              />
+            )}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {p.variants.map((v) => {
+                const count = v.stock;
+                const key = `${p.sku}-${v.label}`;
+                return (
+                  <div
+                    key={v.label}
+                    className={`flex items-center gap-1 rounded-xl border px-2 py-1.5 text-sm ${
+                      count > 0 ? "border-amber-200 bg-amber-50" : "border-stone-200 bg-stone-50 opacity-60"
+                    }`}
+                  >
+                    <span className="max-w-28 truncate font-semibold text-stone-700" title={v.label}>
+                      {v.label} <span className="font-normal text-stone-400">×{count}</span>
+                    </span>
+                    <button
+                      disabled={busyKey === key || count === 0}
+                      onClick={() => adjust(p, v.label, -1)}
+                      title="Mark one sold"
+                      className="h-7 w-7 rounded-lg bg-amber-500 font-bold text-white hover:bg-amber-600 disabled:opacity-30"
+                    >
+                      −
+                    </button>
+                    <button
+                      disabled={busyKey === key}
+                      onClick={() => adjust(p, v.label, +1)}
+                      title="Restock one"
+                      className="h-7 w-7 rounded-lg bg-stone-200 font-bold text-stone-700 hover:bg-stone-300 disabled:opacity-30"
+                    >
+                      +
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+        <Pager page={stockPg.page} pages={stockPg.pages} onPage={(p) => void goStockPage(p)} />
+      </div>}
+      {dialog}
+    </main>
+  );
+}

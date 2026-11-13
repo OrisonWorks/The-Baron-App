@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Image from "next/image";
-import { ArrowRight, ArrowUp, BadgeCheck, MessageCircle, ShieldCheck, ShoppingBag, Truck } from "lucide-react";
+import { ArrowRight, ArrowUp, BadgeCheck, Mail, MessageCircle, ShieldCheck, ShoppingBag, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CAT_ICON } from "@/components/ProductImage";
 import { useCart } from "@/context/cart-context";
+import { toast } from "sonner";
 import { CATEGORIES, type CategoryId, type ClientProduct } from "@/lib/products";
 import { PROMOS } from "@/lib/promo";
 import { BRAND, money, scrollBehavior, TAGLINE, WA_CATALOG, WA_DISPLAY, waLink } from "@/lib/utils";
@@ -155,6 +156,73 @@ export function WhyUs() {
             <p className="mt-1 text-sm text-mist">{i.text}</p>
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+export function Newsletter() {
+  const [email, setEmail] = useState("");
+  const [website, setWebsite] = useState(""); // honeypot — humans never see it
+  const [busy, setBusy] = useState(false);
+
+  const subscribe = async (e: FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, website }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.ok) {
+        toast.error(d.error || "Couldn't subscribe — try again");
+        return;
+      }
+      toast.success(
+        d.already ? "You're already on the Baron List" : "Welcome to the Baron List — you're subscribed!"
+      );
+      setEmail("");
+    } catch {
+      toast.error("Couldn't subscribe — try again");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="border-y border-line bg-panel-2/60 py-12">
+      <div className="mx-auto flex w-[min(1200px,92%)] flex-wrap items-center justify-between gap-6">
+        <div>
+          <h2 className="font-display text-3xl font-semibold">Join the Baron List</h2>
+          <p className="mt-1 text-fg-2">First dibs on new stock, restocks and promos — straight to your inbox.</p>
+        </div>
+        <form className="flex flex-wrap gap-2" onSubmit={subscribe}>
+          {/* honeypot: invisible to humans, bots fill it and get dropped */}
+          <input
+            type="text"
+            name="website"
+            value={website}
+            onChange={(e) => setWebsite(e.target.value)}
+            tabIndex={-1}
+            autoComplete="off"
+            aria-hidden="true"
+            className="absolute -left-[9999px] h-0 w-0 opacity-0"
+          />
+          <label className="sr-only" htmlFor="baron-email">Your email address</label>
+          <input
+            id="baron-email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            className="h-11 w-64 max-w-full rounded-xl border border-line bg-panel px-4 text-sm text-fg outline-none focus:border-gold"
+          />
+          <Button type="submit" disabled={busy} className="h-11"><Mail className="h-4 w-4" /> {busy ? "Joining…" : "Join"}</Button>
+        </form>
       </div>
     </section>
   );

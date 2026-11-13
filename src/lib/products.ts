@@ -140,3 +140,8 @@ export const PRODUCTS: Product[] = [
   item(52, "smart-bracelets", "Smart bracelets", "accessories", 0, "Simple to use bracelets with a good look. Quick charge and can integrate with phone when you download linking app by scanning QR code.", { brand: "", type: "Wearables", gender: "Unisex" }),
   item(53, "timex-women-s-watch", "Timex women's watch", "watches", 0, "Another great American product going as far back as 1854. Part of our product offering in store soon.", { brand: "Timex", type: "Premium", gender: "Women" }),
 ];
+
+// Admin helpers (server products carry exact counts; never ship to clients).
+export const totalStock = (p: Product) => p.variants.reduce((a, v) => a + v.stock, 0);
+export const priceOf = (p: Product) =>
+  p.variants.length ? Math.min(...p.variants.map((v) => v.price)) : 0;
