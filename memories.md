@@ -64,3 +64,10 @@ Needs env: ADMIN_PASSCODE, STOCK_WRITER_URL, STOCK_WRITER_TOKEN (+ REPORT_EMAIL
 script property for the daily digest). Verified end-to-end locally against a
 mock writer (login, sold, create-product, update, receipt, subscribe,
 log-interest, analytics, leads).
+
+2026-11-13 — Hide/Show product toggle in admin
+- Product editor has a "Show on shop" checkbox: unticking writes ACTIVE=FALSE
+  to the model's first sheet row via updateProduct; the shop hides it, admin
+  still lists it (with a "Hidden from shop" badge) so it can be un-hidden.
+- Sheet parser now keeps ACTIVE-hidden groups when includeEmpty=1 (admin) and
+  skips them for the public payload; Product gains `active?: boolean`.
