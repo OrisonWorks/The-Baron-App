@@ -1044,6 +1044,7 @@ function EditForm({ product, onSaved, onDirty, onCancel }: {
     warranty: product.warranty,
     img: product.img,
     desc: product.desc,
+    active: product.active !== false,
   });
   const [saving, setSaving] = useState(false);
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -1079,6 +1080,7 @@ function EditForm({ product, onSaved, onDirty, onCancel }: {
           warranty: form.warranty.trim(),
           img: form.img.trim(),
           desc: form.desc.trim(),
+          active: form.active ? "TRUE" : "FALSE",
         }),
       });
       const d = await res.json().catch(() => ({}));
@@ -1088,6 +1090,7 @@ function EditForm({ product, onSaved, onDirty, onCancel }: {
       }
       onSaved({
         name,
+        active: form.active,
         brand: form.brand.trim(),
         cat: form.cat as CategoryId,
         type: form.type.trim(),
@@ -1113,7 +1116,8 @@ function EditForm({ product, onSaved, onDirty, onCancel }: {
     form.price !== String(priceOf(product)) || form.cat !== product.cat ||
     form.type !== product.type || form.gender !== product.gender ||
     form.condition !== product.condition || form.warranty !== product.warranty ||
-    form.img !== product.img || form.desc !== product.desc;
+    form.img !== product.img || form.desc !== product.desc ||
+    form.active !== (product.active !== false);
   useEffect(() => {
     onDirty(dirty);
     return () => onDirty(false);
@@ -1166,6 +1170,16 @@ function EditForm({ product, onSaved, onDirty, onCancel }: {
       <label className="text-xs font-semibold text-stone-500 sm:col-span-2">
         Description
         <textarea value={form.desc} onChange={set("desc")} rows={2} className={input} />
+      </label>
+      <label className="flex items-center gap-2 text-sm font-semibold text-stone-600 sm:col-span-2">
+        <input
+          type="checkbox"
+          checked={form.active}
+          onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))}
+          className="h-4 w-4 accent-amber-500"
+        />
+        Show on shop
+        <span className="text-xs font-normal text-stone-400">— untick to hide this product from shoppers without deleting it</span>
       </label>
       <div className="flex gap-2 sm:col-span-2">
         <button
@@ -2191,6 +2205,11 @@ export default function AdminPage() {
               />
               <div className="flex flex-wrap items-baseline gap-x-3">
                 <h2 className="font-semibold text-stone-800">{p.name}</h2>
+                {p.active === false && (
+                  <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-semibold text-stone-500">
+                    Hidden from shop
+                  </span>
+                )}
                 <span className="text-xs text-stone-400">
                   {p.sku} · {p.brand} · K{priceOf(p)}
                 </span>

@@ -32,6 +32,9 @@ export interface Product {
   img: string;
   desc: string;
   variants: Variant[];
+  // Sheet-only flag: false when the model's ACTIVE column hides it from the
+  // shop. Omitted on built-in catalogue products (always shown).
+  active?: boolean;
 }
 
 // What the public storefront is allowed to see: per-variant availability flags
