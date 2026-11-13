@@ -4,7 +4,8 @@ import { CartDrawer } from "@/components/CartDrawer";
 import { ChatWidget } from "@/components/ChatWidget";
 import { Header } from "@/components/Header";
 import { QuickView } from "@/components/QuickView";
-import { Categories, Contact, FloatingActions, Footer, Hero, HowToOrder, WhyUs } from "@/components/Sections";
+import { PromoPopup } from "@/components/PromoPopup";
+import { Categories, Contact, FloatingActions, Footer, Hero, HowToOrder, Promos, WhyUs } from "@/components/Sections";
 import { Shop, type ShopState } from "@/components/Shop";
 import { CATEGORIES, type CategoryId, type ClientProduct } from "@/lib/products";
 import { scrollBehavior } from "@/lib/utils";
@@ -49,6 +50,7 @@ export function HomeClient({ products }: { products: ClientProduct[] }) {
       <main id="main" tabIndex={-1}>
         <Hero onSelect={goCat} />
         <Categories products={products} onSelect={goCat} />
+        <Promos />
         <Shop products={products} state={state} setState={setState} search={search} onQuick={setQuick} />
         <HowToOrder />
         <WhyUs />
@@ -56,6 +58,7 @@ export function HomeClient({ products }: { products: ClientProduct[] }) {
       </main>
       <Footer />
       <QuickView product={quick} onClose={() => setQuick(null)} />
+      <PromoPopup />
       <CartDrawer />
       <FloatingActions chat={<ChatWidget products={products} onView={setQuick} />} />
     </>

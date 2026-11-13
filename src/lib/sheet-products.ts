@@ -94,7 +94,7 @@ export function rowsToProducts(rows: Record<string, string>[], includeEmpty = fa
         price: num(r.price_k || r.price) || basePrice,
         stock: num(r.stock || r.qty || r.count),
       }))
-      .filter((v) => v.price > 0);
+      .filter((v) => v.price >= 0); // price 0 renders as "Ask for price" via money()
     if (!variants.length) continue;
     if (!includeEmpty && !variants.some((v) => v.stock > 0)) continue;
     products.push({
