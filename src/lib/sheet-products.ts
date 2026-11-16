@@ -80,7 +80,10 @@ export function rowsToProducts(rows: Record<string, string>[], includeEmpty = fa
   }
   const products: Product[] = [];
   for (const [key, rs] of groups) {
-    if (INACTIVE.includes(first(rs, "active").toLowerCase())) continue;
+    const active = !INACTIVE.includes(first(rs, "active").toLowerCase());
+    // Hidden products stay in the payload for admins (includeEmpty) so they
+    // can be un-hidden from the stock tab; the shop never sees them.
+    if (!active && !includeEmpty) continue;
     const name = first(rs, "name");
     const cat = toCategory(first(rs, "category", "cat"));
     const basePrice = num(first(rs, "price_k", "price"));
@@ -110,6 +113,7 @@ export function rowsToProducts(rows: Record<string, string>[], includeEmpty = fa
       img: toImage(first(rs, "photo", "image", "img")),
       desc: first(rs, "description", "desc"),
       variants,
+      active,
     });
   }
   return products;
