@@ -56,6 +56,7 @@ function doPost(e) {
       return updateProduct(body, out);
     if (body.action === "createProduct")
       return createProduct(body, out);
+    if (body.action === "uploadPhoto") return uploadPhoto(body, out);
     if (body.action === "logEvent") return logEvent(body, out);
     if (body.action === "subscribe") return subscribeEmail(body, out);
     if (body.action === "createReceipt") return createReceipt(body, out);
@@ -322,6 +323,45 @@ function getOrCreate_(ss, name, headers) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   }
   return sheet;
+}
+
+// Saves an uploaded product photo to Drive and returns the public
+// thumbnail URL the PHOTO column stores. Folder: script property
+// PHOTO_FOLDER_ID when set, else the script owner's Drive root.
+function uploadPhoto(body, out) {
+  const mime = String(body.mime || "").toLowerCase();
+  if (!/^image\/(jpeg|png|webp|gif)$/.test(mime))
+    return out({ ok: false, error: "photos must be JPEG, PNG, WebP or GIF" });
+  const data = String(body.data || "");
+  if (!data || data.length > 6 * 1024 * 1024)
+    return out({ ok: false, error: "photo too large (max ~4.5MB)" });
+  const name =
+    (String(body.model || "photo").replace(/[^\w-]+/g, "-") || "photo") +
+    "-" +
+    Utilities.getUuid().slice(0, 8);
+  let blob;
+  try {
+    blob = Utilities.newBlob(Utilities.base64Decode(data), mime, name);
+  } catch (err) {
+    return out({ ok: false, error: "could not read photo data" });
+  }
+  let folder = null;
+  const folderId = PropertiesService.getScriptProperties().getProperty(
+    "PHOTO_FOLDER_ID"
+  );
+  if (folderId) {
+    try {
+      folder = DriveApp.getFolderById(folderId);
+    } catch (err) {
+      folder = null;
+    }
+  }
+  const file = (folder || DriveApp).createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  const url =
+    "https://drive.google.com/thumbnail?id=" + file.getId() + "&sz=w1200";
+  appendLog_("photo", String(body.model || ""), "", name);
+  return out({ ok: true, url });
 }
 
 // Appends one LOG row: TS, ACTION, MODEL, VARIANT, NOTE. Never throws — a

@@ -613,6 +613,58 @@ function ReceiptPanel({ products }: { products: Product[] }) {
 }
 
 
+// Photo picker used by Add product and Edit: uploads the file to Drive via
+// the stock writer and fills the PHOTO field with the returned public URL.
+function PhotoField({ value, model, onChange }: { value: string; model: string; onChange: (url: string) => void }) {
+  const [uploading, setUploading] = useState(false);
+  const pick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    if (!/^image\//.test(f.type)) return toast.error("Choose an image file");
+    // Base64 inflates ~33%; stay under Vercel's ~4.5MB request-body limit.
+    if (f.size > 3_000_000) return toast.error("Photo too large (max ~3MB)");
+    setUploading(true);
+    try {
+      const b64 = await new Promise<string>((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result).split(",")[1] || "");
+        r.onerror = rej;
+        r.readAsDataURL(f);
+      });
+      const resp = await fetch("/api/admin/upload-photo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model, mime: f.type, data: b64 }),
+      });
+      const d = await resp.json().catch(() => ({}));
+      if (!resp.ok || !d.ok) return toast.error(d.error || "Upload failed");
+      onChange(d.url);
+      toast.success("Photo uploaded");
+    } catch {
+      toast.error("Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+  return (
+    <div className="sm:col-span-2">
+      <span className="text-xs font-semibold text-stone-500">Photo (upload or paste a path/URL)</span>
+      <div className="mt-1 flex items-center gap-2">
+        {value && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={value} alt="" className="h-10 w-10 shrink-0 rounded-lg border border-amber-100 object-cover" />
+        )}
+        <input value={value} onChange={(e) => onChange(e.target.value)} className={inputCls} placeholder="/catalog/item.jpg or https://…" />
+        <label className={`shrink-0 cursor-pointer rounded-lg px-3 py-2 text-xs font-semibold ${uploading ? "bg-stone-100 text-stone-400" : "bg-amber-500 text-white hover:bg-amber-600"}`}>
+          {uploading ? "Uploading…" : "Upload"}
+          <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" disabled={uploading} onChange={(e) => void pick(e)} />
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function AddStylePanel({ onCreated }: { onCreated: () => void }) {
   const { ask, dialog } = useConfirm();
   const [form, setForm] = useState({
@@ -690,7 +742,7 @@ function AddStylePanel({ onCreated }: { onCreated: () => void }) {
       <label className="text-xs font-semibold text-stone-500">For<input value={form.gender} onChange={set("gender")} className={inputCls} placeholder="Men / Women / Unisex" /></label>
       <label className="text-xs font-semibold text-stone-500">Condition<input value={form.condition} onChange={set("condition")} className={inputCls} placeholder="New" /></label>
       <label className="text-xs font-semibold text-stone-500">Warranty<input value={form.warranty} onChange={set("warranty")} className={inputCls} placeholder="Optional" /></label>
-      <label className="text-xs font-semibold text-stone-500">Photo path / URL<input value={form.img} onChange={set("img")} className={inputCls} placeholder="/catalog/item.jpg or https://…" /></label>
+      <PhotoField value={form.img} model={form.sku || "photo"} onChange={(url) => setForm((f) => ({ ...f, img: url }))} />
       <label className="text-xs font-semibold text-stone-500 sm:col-span-2">Description<textarea value={form.desc} onChange={set("desc")} rows={2} className={inputCls} placeholder="Optional — shown on the product card" /></label>
       <div className="sm:col-span-2">
         <p className="mb-2 text-xs font-semibold text-stone-500">Variants — label, stock, optional price override</p>
@@ -1166,10 +1218,7 @@ function EditForm({ product, onSaved, onDirty, onCancel }: {
         Warranty
         <input value={form.warranty} onChange={set("warranty")} className={input} />
       </label>
-      <label className="text-xs font-semibold text-stone-500 sm:col-span-2">
-        Photo (URL or /catalog/… path)
-        <input value={form.img} onChange={set("img")} className={input} />
-      </label>
+      <PhotoField value={form.img} model={product.sku} onChange={(url) => setForm((f) => ({ ...f, img: url }))} />
       <label className="text-xs font-semibold text-stone-500 sm:col-span-2">
         Description
         <textarea value={form.desc} onChange={set("desc")} rows={2} className={input} />
