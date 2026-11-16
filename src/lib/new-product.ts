@@ -2,6 +2,8 @@
 // sheet. Used by the single-create and bulk-create admin routes.
 // Baron layout: one STOCK row per variant.
 
+import { parsePrice } from "@/lib/products";
+
 export type NewProductInput = {
   sku?: unknown;
   name?: unknown;
@@ -35,13 +37,13 @@ export function validateNewProduct(body: NewProductInput): NewProduct | { error:
   const name = typeof body.name === "string" ? body.name.trim() : "";
   if (!name) return { error: `${sku}: name required` };
   const priceRaw = String(body.price ?? "").trim();
-  if (priceRaw && !/^\d{1,7}$/.test(priceRaw)) return { error: `${sku}: price must be a whole number` };
-  const basePrice = priceRaw ? parseInt(priceRaw, 10) : 0;
+  const parsedBase = priceRaw ? parsePrice(priceRaw) : 0;
+  if (parsedBase === null) return { error: `${sku}: price must be a whole number` };
+  const basePrice = parsedBase;
   const variants = (Array.isArray(body.variants) ? body.variants : [])
     .map((v: { label?: unknown; price?: unknown; count?: unknown }) => ({
       label: String((v && v.label) || "").trim().slice(0, 60) || "Standard",
-      price: /^\d{1,7}$/.test(String((v && v.price) ?? "").trim())
-        ? parseInt(String((v && v.price) ?? "").trim(), 10) : basePrice,
+      price: parsePrice(String((v && v.price) ?? "").trim()) ?? basePrice,
       count: Math.max(0, parseInt(String(v && v.count), 10) || 0),
     }))
     .filter((v: NewVariant) => v.count > 0);

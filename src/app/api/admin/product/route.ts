@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { revalidateTag } from "next/cache";
 import { ADMIN_COOKIE, cookieAuthed } from "@/lib/admin-auth";
+import { parsePrice } from "@/lib/products";
 
 // Editable product fields → sheet column names the Apps Script writes.
 // The site parser prefers these sheet values over the built-in catalogue.
@@ -47,8 +48,12 @@ export async function POST(req: Request) {
   if (fields.name != null && !fields.name.trim()) {
     return NextResponse.json({ ok: false, error: "name can't be empty" }, { status: 400 });
   }
-  if (fields.price != null && !/^\d{1,7}$/.test(fields.price.trim())) {
-    return NextResponse.json({ ok: false, error: "price must be a whole number (0 = ask for price)" }, { status: 400 });
+  if (fields.price != null) {
+    const p = parsePrice(fields.price);
+    if (p === null) {
+      return NextResponse.json({ ok: false, error: "price must be a whole number (0 = ask for price)" }, { status: 400 });
+    }
+    fields.price = String(p);
   }
   try {
     const res = await fetch(url, {

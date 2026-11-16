@@ -1,11 +1,11 @@
 import Image from "next/image";
-import { Cable, Headphones, Headset, Shirt, Smartphone, Sparkles, Watch, type LucideIcon } from "lucide-react";
+import { Cable, Headphones, Headset, Shirt, Smartphone, Speaker, Sparkles, Watch, type LucideIcon } from "lucide-react";
 import type { CategoryId } from "@/lib/products";
 import { cn } from "@/lib/utils";
 
 export const CAT_ICON: Record<CategoryId, LucideIcon> = {
   phones: Smartphone, headphones: Headphones, earphones: Headset, accessories: Cable,
-  watches: Watch, "body-care": Sparkles, clothing: Shirt,
+  watches: Watch, "body-care": Sparkles, clothing: Shirt, speakers: Speaker,
 };
 
 // Sheet rows may not have a photo yet; show a branded category tile instead of
