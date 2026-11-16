@@ -84,3 +84,10 @@ log-interest, analytics, leads).
 - Admin prices now accept "1,500", "K1,500", "1500.00" — parsePrice()
   normalizes to whole-number kwacha in bulk import, add/edit product and the
   update API (fixes the bulk-import "price must be positive" failure).
+
+2026-11-16 — Admin photo upload
+- Add product + Edit product forms get a PhotoField: Upload button sends
+  the image to /api/admin/upload-photo → writer action "uploadPhoto" saves
+  it to the sheet owner's Drive (PHOTO_FOLDER_ID script property optional)
+  and returns a drive.google.com/thumbnail URL stored in PHOTO. Paste-path
+  still works. Max ~4.5MB, JPEG/PNG/WebP/GIF.
