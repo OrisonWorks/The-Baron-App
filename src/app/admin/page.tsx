@@ -909,7 +909,21 @@ function BulkImport({ onDone }: { onDone: () => void }) {
     if (!file) return;
     setFileName(file.name);
     setResults(null);
-    const rows = parseCsv(await file.text());
+    // .xlsx via read-excel-file (dynamic import — admin-only code).
+    // Numbers come back as numbers, so stringify every cell.
+    let rows: string[][];
+    if (/\.xlsx$/i.test(file.name)) {
+      try {
+        const { readSheet } = await import("read-excel-file/browser");
+        rows = (await readSheet(file)).map((r) => r.map((c) => (c == null ? "" : String(c))));
+      } catch {
+        toast.error("Couldn't read that Excel file — is it a real .xlsx?");
+        setItems(null);
+        return;
+      }
+    } else {
+      rows = parseCsv(await file.text());
+    }
     if (rows.length < 2) {
       toast.error("No data rows — need a header row plus at least one product row");
       setItems(null);
@@ -996,10 +1010,10 @@ function BulkImport({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="rounded-2xl border border-amber-100 bg-white p-5">
-      <p className="text-sm font-semibold text-stone-700">Bulk import from CSV</p>
+      <p className="text-sm font-semibold text-stone-700">Bulk import — Excel or CSV</p>
       <p className="mt-1 text-sm text-stone-500">
-        Adding a whole delivery? Fill the template in Google Sheets or Excel
-        (File → Download → CSV) and upload it here — one row per variant (repeat the model code for multi-variant products).
+        Adding a whole delivery? Upload the filled template straight as .xlsx (or a CSV
+        export) — one row per variant (repeat the model code for multi-variant products).
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <button
@@ -1011,7 +1025,7 @@ function BulkImport({ onDone }: { onDone: () => void }) {
         </button>
         <label className="cursor-pointer rounded-xl border border-amber-200 px-4 py-2 text-sm font-semibold text-amber-600 hover:bg-amber-50">
           Choose CSV…
-          <input type="file" accept=".csv,text/csv" onChange={onFile} className="hidden" />
+          <input type="file" accept=".csv,.xlsx,.xls,text/csv" onChange={onFile} className="hidden" />
         </label>
         {fileName && <span className="text-xs text-stone-400">{fileName}</span>}
       </div>

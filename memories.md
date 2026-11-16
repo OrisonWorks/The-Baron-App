@@ -91,3 +91,8 @@ log-interest, analytics, leads).
   it to the sheet owner's Drive (PHOTO_FOLDER_ID script property optional)
   and returns a drive.google.com/thumbnail URL stored in PHOTO. Paste-path
   still works. Max ~4.5MB, JPEG/PNG/WebP/GIF.
+
+2026-11-16 — Bulk import accepts .xlsx
+- The bulk importer reads .xlsx/.xls via read-excel-file (dynamic import,
+  admin-only bundle), same header rules and validation as CSV. Copy updated
+  to "Bulk import — Excel or CSV".
