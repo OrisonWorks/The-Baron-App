@@ -622,7 +622,8 @@ function PhotoField({ value, model, onChange }: { value: string; model: string; 
     e.target.value = "";
     if (!f) return;
     if (!/^image\//.test(f.type)) return toast.error("Choose an image file");
-    if (f.size > 4_500_000) return toast.error("Photo too large (max ~4.5MB)");
+    // Base64 inflates ~33%; stay under Vercel's ~4.5MB request-body limit.
+    if (f.size > 3_000_000) return toast.error("Photo too large (max ~3MB)");
     setUploading(true);
     try {
       const b64 = await new Promise<string>((res, rej) => {
@@ -741,7 +742,7 @@ function AddStylePanel({ onCreated }: { onCreated: () => void }) {
       <label className="text-xs font-semibold text-stone-500">For<input value={form.gender} onChange={set("gender")} className={inputCls} placeholder="Men / Women / Unisex" /></label>
       <label className="text-xs font-semibold text-stone-500">Condition<input value={form.condition} onChange={set("condition")} className={inputCls} placeholder="New" /></label>
       <label className="text-xs font-semibold text-stone-500">Warranty<input value={form.warranty} onChange={set("warranty")} className={inputCls} placeholder="Optional" /></label>
-      <PhotoField value={form.img} model={form.sku || "photo"} onChange={(url) => setForm({ ...form, img: url })} />
+      <PhotoField value={form.img} model={form.sku || "photo"} onChange={(url) => setForm((f) => ({ ...f, img: url }))} />
       <label className="text-xs font-semibold text-stone-500 sm:col-span-2">Description<textarea value={form.desc} onChange={set("desc")} rows={2} className={inputCls} placeholder="Optional — shown on the product card" /></label>
       <div className="sm:col-span-2">
         <p className="mb-2 text-xs font-semibold text-stone-500">Variants — label, stock, optional price override</p>
