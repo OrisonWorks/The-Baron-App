@@ -96,3 +96,8 @@ log-interest, analytics, leads).
 - The bulk importer reads .xlsx/.xls via read-excel-file (dynamic import,
   admin-only bundle), same header rules and validation as CSV. Copy updated
   to "Bulk import — Excel or CSV".
+
+2026-11-16 — Excel exports across admin
+- Every CSV export (daily report, daily trend, top models, repeat customers,
+  leads) now also offers a real .xlsx via write-excel-file (lazy-loaded).
+  Import side: .xlsx in, .xlsx out.

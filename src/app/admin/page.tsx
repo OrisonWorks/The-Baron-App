@@ -114,6 +114,22 @@ function downloadCsv(name: string, headers: string[], rows: (string | number)[][
   URL.revokeObjectURL(a.href);
 }
 
+// Real .xlsx export — write-excel-file loads lazily so the admin bundle
+// doesn't pay for it on every page. Same data as downloadCsv.
+async function downloadXlsx(name: string, headers: string[], rows: (string | number)[][]) {
+  const { default: writeXlsxFile } = await import("write-excel-file/browser");
+  await (await writeXlsxFile([headers, ...rows])).toFile(name);
+}
+
+function ExportButtons({ base, headers, rows, btn }: { base: string; headers: string[]; rows: (string | number)[][]; btn: string }) {
+  return (
+    <>
+      <button onClick={() => downloadCsv(`${base}.csv`, headers, rows)} className={btn}>CSV</button>
+      <button onClick={() => downloadXlsx(`${base}.xlsx`, headers, rows).catch(() => toast.error("Excel export failed"))} className={btn}>Excel</button>
+    </>
+  );
+}
+
 // Daily report as a branded PDF: logo header, KPI line, model table.
 // jsPDF loads lazily so the admin bundle doesn't pay for it on every page.
 async function exportReportPdf(day: string, net: { sold: number; interest: number; restock: number }, modelRows: [string, number, number, number][], styleOf: (model: string) => { name: string; brand: string } | null) {
@@ -369,12 +385,12 @@ function ReportsPanel({ products }: { products: Product[] }) {
         </button>
         {loaded && modelRows.length > 0 && (
           <div className="ml-auto flex gap-2">
-            <button
-              onClick={() => downloadCsv(`baron-report-${loadedDay}.csv`, ["model", "name", "brand", "sold", "interest taps", "restocks"], modelRows.map(([m, s, t, rs]) => { const p = bySku.get(m); return [m, p?.name || "", p?.brand || "", s, t, rs]; }))}
-              className="rounded-lg bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-600 hover:bg-stone-200"
-            >
-              CSV / Excel
-            </button>
+            <ExportButtons
+              base={`baron-report-${loadedDay}`}
+              headers={["model", "name", "brand", "sold", "interest taps", "restocks"]}
+              rows={modelRows.map(([m, s, t, rs]) => { const p = bySku.get(m); return [m, p?.name || "", p?.brand || "", s, t, rs]; })}
+              btn="rounded-lg bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-600 hover:bg-stone-200"
+            />
             <button
               onClick={exportPdf}
               className="rounded-lg bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-600 hover:bg-stone-200"
@@ -1554,7 +1570,7 @@ function AnalyticsPanel({ analytics, products, stockLive }: { analytics: ReturnT
       <div className="rounded-2xl border border-amber-100 bg-white p-4">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-stone-800">Sales trend — sold vs order taps per day {totalRev > 0 && <span className="font-normal text-stone-400">· K{totalRev.toLocaleString()} revenue</span>}</h3>
-          <button onClick={() => downloadCsv(`baron-daily-${range}d.csv`, ["date", "sold", "order taps", "revenue K"], days.map((x) => [x.d, x.sold, x.taps, x.rev]))} className="text-xs font-semibold text-amber-500">Export CSV</button>
+          <ExportButtons base={`baron-daily-${range}d`} headers={["date", "sold", "order taps", "revenue K"]} rows={days.map((x) => [x.d, x.sold, x.taps, x.rev])} btn="text-xs font-semibold text-amber-500" />
         </div>
         <div className="mt-3 space-y-1">
           {days.map((x) => (
@@ -1676,7 +1692,7 @@ function TopModelsTable({ rows, range, products }: { rows: { m: string; sold: nu
     <div className="rounded-2xl border border-amber-100 bg-white p-4">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-stone-800">Top models — sold vs interest</h3>
-        <button onClick={() => downloadCsv(`baron-models-${range}d.csv`, ["model", "name", "brand", "sold", "order taps"], rows.map((t) => { const p = bySku.get(t.m); return [t.m, p?.name || "", p?.brand || "", t.sold, t.taps]; }))} className="text-xs font-semibold text-amber-500">CSV</button>
+        <ExportButtons base={`baron-models-${range}d`} headers={["model", "name", "brand", "sold", "order taps"]} rows={rows.map((t) => { const p = bySku.get(t.m); return [t.m, p?.name || "", p?.brand || "", t.sold, t.taps]; })} btn="text-xs font-semibold text-amber-500" />
       </div>
       <div className="overflow-x-auto">
       <table className="min-w-[460px] mt-3 w-full text-sm">
@@ -1703,7 +1719,7 @@ function RepeatersTable({ repeaters }: { repeaters: [string, { name: string; cou
     <div className="rounded-2xl border border-amber-100 bg-white p-4">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-stone-800">Repeat customers ({repeaters.length})</h3>
-        <button onClick={() => downloadCsv("baron-repeat-customers.csv", ["phone", "name", "receipts", "total K"], repeaters.map(([ph, v]) => [ph, v.name, v.count, v.total]))} className="text-xs font-semibold text-amber-500">CSV</button>
+        <ExportButtons base="baron-repeat-customers" headers={["phone", "name", "receipts", "total K"]} rows={repeaters.map(([ph, v]) => [ph, v.name, v.count, v.total])} btn="text-xs font-semibold text-amber-500" />
       </div>
       <div className="overflow-x-auto">
       <table className="min-w-[480px] mt-3 w-full text-sm">
@@ -1781,19 +1797,14 @@ function LeadsPanel({ products }: { products: Product[] }) {
             {f === "all" ? "All" : f === "stocked" ? "In stock" : "Needs restock"}
           </button>
         ))}
-        <button
-          onClick={() =>
-            downloadCsv(
-              "leads.csv",
-              ["model", "variant", "taps", "last tap", "name", "phone"],
-              shown.map((r) => [r.l.model, r.l.size, r.l.taps, r.l.lastTs, r.l.who || "", r.l.phone || ""])
-            )
-          }
-          disabled={!shown.length}
-          className="ml-auto rounded-lg bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-600 hover:bg-stone-200 disabled:opacity-40"
-        >
-          Export CSV
-        </button>
+        <span className={`ml-auto flex gap-2 ${shown.length ? "" : "pointer-events-none opacity-40"}`}>
+          <ExportButtons
+            base="leads"
+            headers={["model", "variant", "taps", "last tap", "name", "phone"]}
+            rows={shown.map((r) => [r.l.model, r.l.size, r.l.taps, r.l.lastTs, r.l.who || "", r.l.phone || ""])}
+            btn="rounded-lg bg-stone-100 px-3 py-1.5 text-xs font-semibold text-stone-600 hover:bg-stone-200"
+          />
+        </span>
       </div>
       <p className="mt-1 text-xs text-stone-400">
         A tap counts as filled once the same style+size is later marked sold — these are the open ones. Contact shown when the client consented to follow-up.
