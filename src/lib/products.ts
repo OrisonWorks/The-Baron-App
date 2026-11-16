@@ -94,7 +94,7 @@ export const PRODUCTS: Product[] = [
   item(2, "jbl-tune-500-wired-headphones", "JBL Tune 500 Wired Headphones", "headphones", 1295, "JBL through the wire. Good for quick connectivity, calls and music. Keep it simple but premium", { brand: "JBL", type: "", gender: "Unisex" }),
   item(3, "jbl-520-bt-wireless-headphones", "JBL 520 BT Wireless Headphones", "headphones", 1650, "zone out with these wireless Bluetooth headphones. over 50 hours of battery life with these premium JBL headphones 🎧", { brand: "JBL", type: "", gender: "Unisex" }),
   item(4, "jbl-tune-680nc-headphones", "JBL Tune 680NC Headphones", "headphones", 2495, "Noice cancelling JBL headphones. Play your music uninterrupted", { brand: "JBL", type: "", gender: "Unisex" }),
-  item(5, "jbl-go-5", "JBL GO 5", "accessories", 2495, "Premium, portable Speakers. Dust proof waterproof and drop proof.", { brand: "JBL", type: "Speakers", gender: "Unisex" }),
+  item(5, "jbl-go-5", "JBL GO 5", "speakers", 2495, "Premium, portable Speakers. Dust proof waterproof and drop proof.", { brand: "JBL", type: "Speakers", gender: "Unisex" }),
   item(6, "lenovo-lp5-pro-pods", "Lenovo LP5 pro pods", "earphones", 600, "Lenovo Bluetooth earbuds. Pick your calls seamlessly.  Drown the noise and be at peace. Enjoy an emersive music experience .", { brand: "Lenovo", type: "", gender: "Unisex" }),
   item(7, "pouches-for-pods", "Pouches for pods", "accessories", 200, "Black pouches for your ear pods. Enough space to slot in your type C cable to charge", { brand: "Lenovo", type: "Cases", gender: "Unisex" }),
   item(8, "lenovo-lp5-pods", "Lenovo LP5 Pods", "earphones", 600, "The LP5 pods come with a USB C and extra buds of different sizes. These pods have a long battery life and come in black, grey and white colours. Their seemless portability and sound quality makes them appealing to every music lover", { brand: "Lenovo", type: "", gender: "Unisex" }),
@@ -151,10 +151,11 @@ export const totalStock = (p: Product) => p.variants.reduce((a, v) => a + v.stoc
 // Normalizes a sheet/admin price to a whole-number kwacha. Accepts "1500",
 // "1,500", "K1,500" and "1500.00"; rejects non-numeric and non-whole values.
 export function parsePrice(raw: string): number | null {
-  const s = raw.trim().replace(/^k\s*/i, "").replace(/,/g, "");
-  if (!/^\d{1,7}(\.\d{1,2})?$/.test(s)) return null;
-  const n = Number(s);
-  return Number.isInteger(n) && n >= 0 ? n : null;
+  const s = raw.trim().replace(/^k\s*/i, "");
+  // Commas only as proper thousands separators — "1,500" ok, "15,00" not.
+  if (s.includes(",") ? !/^\d{1,3}(,\d{3})+(\.\d{1,2})?$/.test(s) : !/^\d{1,7}(\.\d{1,2})?$/.test(s)) return null;
+  const n = Number(s.replace(/,/g, ""));
+  return Number.isInteger(n) && n >= 0 && n <= 9999999 ? n : null;
 }
 export const priceOf = (p: Product) =>
   p.variants.length ? Math.min(...p.variants.map((v) => v.price)) : 0;

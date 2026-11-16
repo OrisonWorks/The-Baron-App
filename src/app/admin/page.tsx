@@ -1059,10 +1059,12 @@ function EditForm({ product, onSaved, onDirty, onCancel }: {
       toast.error("Name can't be empty");
       return;
     }
-    if (!/^\d{1,7}$/.test(price)) {
+    const parsedPrice = parsePrice(price);
+    if (parsedPrice === null) {
       toast.error("Price must be a whole number (0 = ask for price)");
       return;
     }
+    const priceStr = String(parsedPrice);
     if (!(await ask({ title: `Save changes to ${product.name}?`, body: "Updates the live catalogue — shoppers see it within ~a minute.", confirmLabel: "Save" }))) return;
     setSaving(true);
     try {
@@ -1073,7 +1075,7 @@ function EditForm({ product, onSaved, onDirty, onCancel }: {
           sku: product.sku,
           name: name,
           brand: form.brand.trim(),
-          price,
+          price: priceStr,
           cat: form.cat,
           type: form.type.trim(),
           gender: form.gender.trim(),
@@ -1100,7 +1102,7 @@ function EditForm({ product, onSaved, onDirty, onCancel }: {
         warranty: form.warranty.trim(),
         img: form.img.trim(),
         desc: form.desc.trim(),
-        variants: product.variants.map((v) => ({ ...v, price: parseInt(price, 10) || 0 })),
+        variants: product.variants.map((v) => ({ ...v, price: parsedPrice })),
       });
       toast.success(`${name || product.sku} saved`);
     } catch {
