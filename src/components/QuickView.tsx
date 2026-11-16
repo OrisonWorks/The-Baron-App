@@ -50,7 +50,7 @@ export function QuickView({ product, onClose }: { product: ClientProduct | null;
                         className={cn("cursor-pointer rounded-xl border px-3 py-2 text-left text-sm font-semibold", variant === v.label ? "border-gold bg-gold text-on-gold" : "border-line bg-panel-2 hover:border-gold")}
                       >
                         {v.label}
-                        <span className="block text-[11px] font-medium opacity-80">{money(v.price)} · {v.flag === "low" ? "few left" : "in stock"}</span>
+                        <span className="block text-[11px] font-medium opacity-80">{money(v.price)}</span>
                       </button>
                     ))}
                   </div>

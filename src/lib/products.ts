@@ -1,11 +1,12 @@
 export type CategoryId =
-  | "phones" | "headphones" | "earphones" | "accessories" | "watches" | "body-care" | "clothing";
+  | "phones" | "headphones" | "earphones" | "speakers" | "accessories" | "watches" | "body-care" | "clothing";
 
 export const CATEGORIES: { id: CategoryId; label: string; blurb: string }[] = [
   { id: "watches", label: "Watches", blurb: "Fossil, Invicta, Timex · Naviforce, Curren, Casio" },
   { id: "phones", label: "Phones", blurb: "Smartphones, new and ex-UK" },
   { id: "headphones", label: "Headphones", blurb: "Over-ear and on-ear, wired and wireless" },
   { id: "earphones", label: "Earphones", blurb: "Earbuds and in-ear" },
+  { id: "speakers", label: "Speakers", blurb: "Portable and home audio" },
   { id: "accessories", label: "Phone Accessories", blurb: "Chargers, cables, covers and more" },
   { id: "body-care", label: "Body Care", blurb: "Lotions, serums, body wash, face masks" },
   { id: "clothing", label: "Clothing", blurb: "Everyday pieces for men and women" },
@@ -146,5 +147,14 @@ export const PRODUCTS: Product[] = [
 
 // Admin helpers (server products carry exact counts; never ship to clients).
 export const totalStock = (p: Product) => p.variants.reduce((a, v) => a + v.stock, 0);
+
+// Normalizes a sheet/admin price to a whole-number kwacha. Accepts "1500",
+// "1,500", "K1,500" and "1500.00"; rejects non-numeric and non-whole values.
+export function parsePrice(raw: string): number | null {
+  const s = raw.trim().replace(/^k\s*/i, "").replace(/,/g, "");
+  if (!/^\d{1,7}(\.\d{1,2})?$/.test(s)) return null;
+  const n = Number(s);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
 export const priceOf = (p: Product) =>
   p.variants.length ? Math.min(...p.variants.map((v) => v.price)) : 0;

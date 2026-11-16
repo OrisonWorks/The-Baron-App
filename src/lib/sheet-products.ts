@@ -40,7 +40,7 @@ const CAT_ALIASES: Record<string, CategoryId> = {
   phone: "phones", smartphones: "phones", headphone: "headphones", earphone: "earphones",
   earbuds: "earphones", "phone-accessories": "accessories", accessory: "accessories",
   watch: "watches", "bodycare": "body-care", "body-care-men-women": "body-care",
-  skincare: "body-care", clothes: "clothing",
+  skincare: "body-care", clothes: "clothing", speaker: "speakers", bluetooth: "speakers",
 };
 
 export function toCategory(raw: string): CategoryId | null {

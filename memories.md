@@ -71,3 +71,16 @@ log-interest, analytics, leads).
   still lists it (with a "Hidden from shop" badge) so it can be un-hidden.
 - Sheet parser now keeps ACTIVE-hidden groups when includeEmpty=1 (admin) and
   skips them for the public payload; Product gains `active?: boolean`.
+
+2026-11-16 — Aaron's shop tweaks
+- Categories headline: "Everything The Baron carries" → "Browse the shop"
+  (don't box the catalogue in; stock grows beyond what's listed).
+- New "speakers" category (icon + sheet aliases speaker/bluetooth); the
+  fallback JBL GO 5 moved there. Subcategories already exist via the TYPE
+  column → "Range" filter chips in the shop.
+- Storefront no longer shows any stock wording: removed the "Only a few
+  left" badge, "in stock"/"N options in stock" labels and the quick-view
+  "few left" text. The chat helper still answers availability questions.
+- Admin prices now accept "1,500", "K1,500", "1500.00" — parsePrice()
+  normalizes to whole-number kwacha in bulk import, add/edit product and the
+  update API (fixes the bulk-import "price must be positive" failure).

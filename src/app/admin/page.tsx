@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { toast } from "sonner";
 import type { Product, CategoryId } from "@/lib/products";
-import { CATEGORIES, CAT_LABEL, totalStock, priceOf } from "@/lib/products";
+import { CATEGORIES, CAT_LABEL, totalStock, priceOf, parsePrice } from "@/lib/products";
 import { amountInWords } from "@/lib/money-words";
 import { waLink, waNumber } from "@/lib/utils";
 import { parseCsv } from "@/lib/csv";
@@ -821,11 +821,12 @@ function csvToItems(rows: string[][], cols: Map<string, number>): CsvItem[] {
       item.error = "bad product code";
     } else if (!item.name) {
       item.error = "name required";
-    } else if (item.price && !/^\d{1,7}$/.test(item.price)) {
+    } else if (item.price && parsePrice(item.price) === null) {
       item.error = "price must be a whole number";
     } else if (!item.variants.some((v) => v.count > 0)) {
       item.error = "no stock in any variant row";
     }
+    if (!item.error && item.price) item.price = String(parsePrice(item.price));
     item.variants = item.variants.filter((v) => v.count > 0);
   });
   return [...items, ...singles];

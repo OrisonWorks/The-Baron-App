@@ -45,7 +45,7 @@ export function Categories({ products, onSelect }: { products: ClientProduct[]; 
     <section id="categories" className="mx-auto w-[min(1200px,92%)] py-14">
       <div className="mb-8 text-center">
         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-accent">Shop by category</p>
-        <h2 className="mt-2 font-display text-3xl font-semibold sm:text-4xl">Everything The Baron carries</h2>
+        <h2 className="mt-2 font-display text-3xl font-semibold sm:text-4xl">Browse the shop</h2>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {CATEGORIES.map((c) => {
