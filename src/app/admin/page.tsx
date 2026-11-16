@@ -909,15 +909,15 @@ function BulkImport({ onDone }: { onDone: () => void }) {
     if (!file) return;
     setFileName(file.name);
     setResults(null);
-    // .xlsx/.xls via read-excel-file (dynamic import — admin-only code).
+    // .xlsx via read-excel-file (dynamic import — admin-only code).
     // Numbers come back as numbers, so stringify every cell.
     let rows: string[][];
-    if (/\.xlsx?$/i.test(file.name)) {
+    if (/\.xlsx$/i.test(file.name)) {
       try {
         const { readSheet } = await import("read-excel-file/browser");
         rows = (await readSheet(file)).map((r) => r.map((c) => (c == null ? "" : String(c))));
       } catch {
-        toast.error("Couldn't read that Excel file — is it a real .xlsx/.xls?");
+        toast.error("Couldn't read that Excel file — is it a real .xlsx?");
         setItems(null);
         return;
       }
